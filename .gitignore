@@ -1,0 +1,270 @@
+# myTech.Today PowerShell Scripts - .gitignore
+# Author: myTech.Today
+# Version: 1.0.0
+
+#region Windows System Files
+
+# Windows thumbnail cache files
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+
+# Dump file
+*.stackdump
+
+# Folder config file
+[Dd]esktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+#endregion
+
+#region PowerShell
+
+# PowerShell module cache
+PSGetModuleInfo.xml
+
+# PowerShell Gallery API key
+*.psgallery
+
+# PowerShell session files
+*.pssc
+
+# PowerShell transcripts
+PowerShell_transcript*.txt
+
+# PowerShell debugging files
+*.pdb
+
+#endregion
+
+#region Logs and Temporary Files
+
+# Log files (except example logs in documentation)
+*.log
+!example.log
+!sample.log
+
+# Temporary files
+*.tmp
+*.temp
+~$*
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Pester test results
+testResults.xml
+coverage.xml
+
+#endregion
+
+#region IDE and Editor Files
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Notepad++
+*.npp
+
+#endregion
+
+#region Build and Package Files
+
+# NuGet packages
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Publish profiles
+*.pubxml
+*.publishproj
+
+#endregion
+
+#region Configuration and Secrets
+
+# Sensitive configuration files (keep templates)
+config.local.json
+config.*.local.json
+secrets.json
+*.secret
+*.secrets
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Encrypted passwords and credentials
+*.encrypted
+*.credential
+*.cred
+
+# API keys and tokens
+*.apikey
+*.token
+
+#endregion
+
+#region Application-Specific
+
+# Downloaded installers (temporary)
+*.exe
+!**/apps/*.exe
+*.msi
+*.dmg
+*.pkg
+
+# Application caches
+cache/
+.cache/
+
+# Node modules (if using Node.js tools)
+node_modules/
+
+# Python virtual environments (if using Python tools)
+venv/
+env/
+.venv/
+.env/
+
+#endregion
+
+#region macOS (for cross-platform development)
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# macOS thumbnails
+._*
+
+# macOS directories
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+#endregion
+
+#region Linux (for cross-platform development)
+
+# Linux temporary files
+*~
+
+# Linux swap files
+.swp
+.swo
+*.swp
+*.swo
+
+#endregion
+
+#region Project-Specific Exclusions
+
+# Keep important directories
+!RestorePoints/
+!app_installer/
+!ai_prompts/
+!.augment/
+
+# Keep documentation
+!README.md
+!CHANGELOG.md
+!LICENSE
+!*.md
+
+# Keep configuration templates
+!config.json.template
+!config.example.json
+
+# Keep test files
+!Tests/
+!*.Tests.ps1
+
+#endregion
+
+#region Custom Rules
+
+# Ignore local development files
+local/
+*.local
+
+# Ignore output directories
+output/
+dist/
+build/
+
+# Ignore archived files
+archive/
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.rar
+
+#endregion
+
