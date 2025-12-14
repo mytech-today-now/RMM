@@ -1,0 +1,76 @@
+{
+  "General": {
+    "OrganizationName": "myTech.Today",
+    "DefaultSite": "Main",
+    "DataRetentionDays": 90,
+    "LogLevel": "Info",
+    "TimeZone": "UTC"
+  },
+  "Connections": {
+    "WinRMTimeout": 30,
+    "WinRMMaxConcurrent": 25,
+    "WinRMPort": 5985,
+    "WinRMPortHttps": 5986,
+    "SSHEnabled": false,
+    "SSHPort": 22,
+    "RelayEnabled": false,
+    "ConnectionRetries": 3,
+    "RetryDelaySeconds": 5
+  },
+  "Monitoring": {
+    "InventoryInterval": "Daily",
+    "HealthCheckInterval": 300,
+    "MetricsRetention": 7,
+    "PerformanceCounterInterval": 60,
+    "ServiceCheckInterval": 300,
+    "EventLogCheckInterval": 600,
+    "EnableAutoRemediation": true
+  },
+  "Notifications": {
+    "EmailEnabled": false,
+    "SmtpServer": "",
+    "SmtpPort": 587,
+    "SmtpUseSsl": true,
+    "SmtpFrom": "",
+    "SmtpUsername": "",
+    "DefaultRecipients": [],
+    "SlackWebhook": "",
+    "TeamsWebhook": "",
+    "PagerDutyKey": "",
+    "NotificationThrottleMinutes": 15
+  },
+  "Security": {
+    "RequireHttps": false,
+    "CredentialCacheTTL": 3600,
+    "AuditAllActions": true,
+    "RequireApprovalForCriticalActions": true,
+    "AllowRemoteScriptExecution": true,
+    "MaxScriptExecutionTime": 300,
+    "EncryptionEnabled": true
+  },
+  "Database": {
+    "Path": "data/devices.db",
+    "BackupEnabled": true,
+    "BackupInterval": "Daily",
+    "BackupRetention": 30,
+    "VacuumOnStartup": false,
+    "ConnectionPoolSize": 10
+  },
+  "Performance": {
+    "EnableCaching": true,
+    "CacheTTL": 300,
+    "MaxParallelJobs": 25,
+    "JobTimeout": 600,
+    "EnableCompression": true,
+    "BatchSize": 50
+  },
+  "UI": {
+    "WebDashboardPort": 8080,
+    "WebDashboardEnabled": true,
+    "RefreshInterval": 30,
+    "ShowDebugInfo": false,
+    "Theme": "Light",
+    "DateFormat": "yyyy-MM-dd HH:mm:ss"
+  }
+}
+

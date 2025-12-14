@@ -1,0 +1,112 @@
+{
+  "PolicyId": "servers",
+  "Name": "Server Policy",
+  "Description": "Enhanced monitoring and security policy for server systems",
+  "Enabled": true,
+  "Priority": 200,
+  "Monitoring": {
+    "InventoryCollection": {
+      "Enabled": true,
+      "Schedule": "Daily",
+      "Time": "01:00",
+      "Categories": ["Hardware", "Software", "Security", "Network", "Services", "Roles"]
+    },
+    "HealthChecks": {
+      "Enabled": true,
+      "Interval": 120,
+      "Checks": ["CPU", "Memory", "Disk", "Services", "EventLog", "NetworkConnectivity", "BackupStatus"]
+    },
+    "PerformanceMetrics": {
+      "Enabled": true,
+      "Interval": 30,
+      "Metrics": ["CPU", "Memory", "Disk", "Network", "DiskQueue", "ProcessorQueue"]
+    }
+  },
+  "Updates": {
+    "AutoInstall": false,
+    "AutoDownload": true,
+    "Schedule": "Monthly",
+    "DayOfWeek": "Saturday",
+    "Time": "02:00",
+    "Categories": ["Security", "Critical"],
+    "ExcludeDrivers": true,
+    "RequireApproval": true,
+    "MaintenanceWindow": {
+      "Enabled": true,
+      "Start": "01:00",
+      "End": "05:00"
+    },
+    "TestBeforeProduction": true,
+    "DelayDays": 7
+  },
+  "Security": {
+    "RequireAntivirus": true,
+    "RequireFirewall": true,
+    "RequireBitLocker": true,
+    "RequireScreenLock": true,
+    "PasswordComplexity": true,
+    "MinPasswordLength": 14,
+    "MaxPasswordAge": 60,
+    "RequireUAC": true,
+    "DisableGuestAccount": true,
+    "AuditLogonEvents": true,
+    "AuditObjectAccess": true,
+    "RequireSecureChannel": true
+  },
+  "Remediation": {
+    "AutoRemediate": false,
+    "Actions": {
+      "RestartStoppedServices": true,
+      "ClearTempFiles": true,
+      "RepairWindowsImage": false,
+      "ResetNetworkStack": false,
+      "MaxAutoRestarts": 1
+    },
+    "RequireApproval": true
+  },
+  "Alerts": {
+    "Enabled": true,
+    "Severity": ["Critical", "Warning", "Info"],
+    "NotificationChannels": ["Email", "Teams"],
+    "EscalationEnabled": true,
+    "EscalationDelayMinutes": 15,
+    "AlertOnReboot": true,
+    "AlertOnServiceChange": true
+  },
+  "Compliance": {
+    "RequireEncryption": true,
+    "RequireSecureBoot": true,
+    "RequireTPM": true,
+    "AllowedSoftware": [],
+    "BlockedSoftware": [],
+    "RequiredSoftware": ["Windows Defender", "Backup Agent"],
+    "AuditFileAccess": true,
+    "RequireEventLogForwarding": false
+  },
+  "Backup": {
+    "MonitorBackupStatus": true,
+    "MaxBackupAge": 24,
+    "RequireOffsite": false,
+    "AlertOnFailure": true
+  },
+  "Maintenance": {
+    "DiskCleanup": {
+      "Enabled": true,
+      "Schedule": "Weekly",
+      "MinFreeSpaceGB": 50
+    },
+    "DefragmentDisks": {
+      "Enabled": false,
+      "Schedule": "Never"
+    },
+    "ClearEventLogs": {
+      "Enabled": false,
+      "RetentionDays": 180
+    },
+    "DatabaseMaintenance": {
+      "Enabled": false,
+      "Schedule": "Weekly"
+    }
+  }
+}
+

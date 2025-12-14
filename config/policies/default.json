@@ -1,0 +1,92 @@
+{
+  "PolicyId": "default",
+  "Name": "Default Workstation Policy",
+  "Description": "Standard policy for workstations and general endpoints",
+  "Enabled": true,
+  "Priority": 100,
+  "Monitoring": {
+    "InventoryCollection": {
+      "Enabled": true,
+      "Schedule": "Daily",
+      "Time": "02:00",
+      "Categories": ["Hardware", "Software", "Security", "Network"]
+    },
+    "HealthChecks": {
+      "Enabled": true,
+      "Interval": 300,
+      "Checks": ["CPU", "Memory", "Disk", "Services", "EventLog"]
+    },
+    "PerformanceMetrics": {
+      "Enabled": true,
+      "Interval": 60,
+      "Metrics": ["CPU", "Memory", "Disk", "Network"]
+    }
+  },
+  "Updates": {
+    "AutoInstall": false,
+    "AutoDownload": true,
+    "Schedule": "Weekly",
+    "DayOfWeek": "Sunday",
+    "Time": "03:00",
+    "Categories": ["Security", "Critical"],
+    "ExcludeDrivers": false,
+    "RequireApproval": true,
+    "MaintenanceWindow": {
+      "Enabled": true,
+      "Start": "22:00",
+      "End": "06:00"
+    }
+  },
+  "Security": {
+    "RequireAntivirus": true,
+    "RequireFirewall": true,
+    "RequireBitLocker": false,
+    "RequireScreenLock": true,
+    "PasswordComplexity": true,
+    "MinPasswordLength": 12,
+    "MaxPasswordAge": 90,
+    "RequireUAC": true,
+    "DisableGuestAccount": true
+  },
+  "Remediation": {
+    "AutoRemediate": true,
+    "Actions": {
+      "RestartStoppedServices": true,
+      "ClearTempFiles": true,
+      "RepairWindowsImage": false,
+      "ResetNetworkStack": false,
+      "MaxAutoRestarts": 3
+    }
+  },
+  "Alerts": {
+    "Enabled": true,
+    "Severity": ["Critical", "Warning"],
+    "NotificationChannels": ["Email"],
+    "EscalationEnabled": true,
+    "EscalationDelayMinutes": 30
+  },
+  "Compliance": {
+    "RequireEncryption": false,
+    "RequireSecureBoot": false,
+    "RequireTPM": false,
+    "AllowedSoftware": [],
+    "BlockedSoftware": [],
+    "RequiredSoftware": []
+  },
+  "Maintenance": {
+    "DiskCleanup": {
+      "Enabled": true,
+      "Schedule": "Weekly",
+      "MinFreeSpaceGB": 10
+    },
+    "DefragmentDisks": {
+      "Enabled": false,
+      "Schedule": "Monthly"
+    },
+    "ClearEventLogs": {
+      "Enabled": false,
+      "RetentionDays": 90
+    }
+  }
+}
+

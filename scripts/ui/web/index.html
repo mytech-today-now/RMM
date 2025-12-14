@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTech.Today RMM Dashboard</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header>
+        <h1>myTech.Today RMM Dashboard</h1>
+        <nav>
+            <a href="/" class="active">Dashboard</a>
+            <a href="/devices">Devices</a>
+            <a href="/alerts">Alerts</a>
+            <a href="/actions">Actions</a>
+            <a href="/reports">Reports</a>
+            <a href="/settings">Settings</a>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Metrics Overview -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h3>Fleet Status</h3>
+                <div class="metric-value" id="fleet-online">-/-</div>
+                <div class="metric-label" id="fleet-percent">Loading...</div>
+            </div>
+
+            <div class="metric-card">
+                <h3>Active Alerts</h3>
+                <div class="metric-value alert-critical" id="alert-count">-</div>
+                <div class="metric-label" id="alert-critical">- Critical</div>
+            </div>
+
+            <div class="metric-card">
+                <h3>Offline Devices</h3>
+                <div class="metric-value alert-warning" id="offline-count">-</div>
+                <div class="metric-label">Requires Attention</div>
+            </div>
+
+            <div class="metric-card">
+                <h3>Recent Actions</h3>
+                <div class="metric-value" id="action-count">-</div>
+                <div class="metric-label">Last 24 Hours</div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="charts-grid">
+            <div class="panel chart-panel">
+                <h2>Device Status Distribution</h2>
+                <canvas id="deviceStatusChart"></canvas>
+            </div>
+            <div class="panel chart-panel">
+                <h2>Alerts by Severity</h2>
+                <canvas id="alertSeverityChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Content Grid -->
+        <div class="content-grid">
+            <div class="panel">
+                <h2>Active Alerts</h2>
+                <div id="alerts-list">
+                    <p class="loading">Loading alerts...</p>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Recent Actions</h2>
+                <div id="actions-list">
+                    <p class="loading">Loading actions...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2025 myTech.Today RMM - Powered by PowerShell</p>
+        <p class="refresh-info">Auto-refresh: <span id="refresh-countdown">30</span>s</p>
+    </footer>
+
+    <script src="/app.js"></script>
+    <script>
+        // Initialize dashboard
+        loadDashboardData();
+        initCharts();
+        startAutoRefresh();
+    </script>
+</body>
+</html>
+

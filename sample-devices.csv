@@ -1,0 +1,12 @@
+Hostname,FQDN,IPAddress,MACAddress,SiteId,OSName,OSVersion,Tags
+DC01,dc01.mytech.local,192.168.1.10,00:15:5D:00:01:01,main,Windows Server 2022,10.0.20348,"production,critical,domain-controller"
+DC02,dc02.mytech.local,192.168.1.11,00:15:5D:00:01:02,main,Windows Server 2022,10.0.20348,"production,critical,domain-controller"
+FS01,fs01.mytech.local,192.168.1.20,00:15:5D:00:01:03,main,Windows Server 2019,10.0.17763,"production,file-server"
+SQL01,sql01.mytech.local,192.168.1.30,00:15:5D:00:01:04,main,Windows Server 2022,10.0.20348,"production,critical,database"
+WEB01,web01.mytech.local,192.168.1.40,00:15:5D:00:01:05,main,Windows Server 2019,10.0.17763,"production,web-server"
+WS-ADMIN01,ws-admin01.mytech.local,192.168.1.100,00:15:5D:00:02:01,main,Windows 11 Pro,10.0.22631,"workstation,admin"
+WS-SALES01,ws-sales01.mytech.local,192.168.1.101,00:15:5D:00:02:02,main,Windows 11 Pro,10.0.22631,"workstation,sales"
+WS-SALES02,ws-sales02.mytech.local,192.168.1.102,00:15:5D:00:02:03,main,Windows 10 Pro,10.0.19045,"workstation,sales"
+LT-EXEC01,lt-exec01.mytech.local,192.168.1.150,00:15:5D:00:03:01,main,Windows 11 Pro,10.0.22631,"laptop,executive"
+LT-SALES01,lt-sales01.mytech.local,192.168.1.151,00:15:5D:00:03:02,main,Windows 11 Pro,10.0.22631,"laptop,sales"
+

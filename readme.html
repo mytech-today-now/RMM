@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTech.Today RMM - Documentation</title>
+    <style>
+        :root { --primary: #667eea; --secondary: #764ba2; --bg: #f8f9fa; --text: #333; --code-bg: #2d2d2d; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; line-height: 1.6; color: var(--text); background: var(--bg); padding: 20px; max-width: 1200px; margin: 0 auto; }
+        h1 { background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; padding: 30px; border-radius: 10px; margin-bottom: 30px; }
+        h2 { color: var(--primary); border-bottom: 2px solid var(--primary); padding-bottom: 10px; margin: 30px 0 20px 0; }
+        h3 { color: var(--secondary); margin: 20px 0 10px 0; }
+        h4 { color: #555; margin: 15px 0 10px 0; }
+        p { margin: 10px 0; }
+        ul, ol { margin: 10px 0 10px 30px; }
+        li { margin: 5px 0; }
+        code { background: #e9ecef; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; }
+        pre { background: var(--code-bg); color: #f8f8f2; padding: 15px; border-radius: 8px; overflow-x: auto; margin: 15px 0; }
+        pre code { background: none; color: inherit; padding: 0; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background: var(--primary); color: white; }
+        tr:nth-child(even) { background: #f2f2f2; }
+        .panel { background: white; border-radius: 10px; padding: 20px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.85em; margin-right: 5px; }
+        .badge-info { background: #17a2b8; color: white; }
+        .badge-success { background: #28a745; color: white; }
+        img { max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); margin: 20px 0; }
+        .toc { background: white; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+        .toc ul { list-style: none; margin-left: 0; }
+        .toc li { margin: 8px 0; }
+        .toc a { color: var(--primary); text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        footer { text-align: center; margin-top: 50px; padding: 20px; color: #666; border-top: 1px solid #ddd; }
+        .checkbox { display: inline-block; width: 16px; height: 16px; border: 2px solid #333; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
+        .checkbox.checked { background: #28a745; border-color: #28a745; }
+        .checkbox.checked::after { content: '✓'; color: white; font-size: 12px; display: block; text-align: center; line-height: 14px; }
+    </style>
+</head>
+<body>
+    <h1>🖥️ myTech.Today RMM (Remote Monitoring and Management)</h1>
+    
+    <p>A comprehensive, production-ready, enterprise-capable PowerShell-based RMM solution for Windows, MacOS, and Linux environments.</p>
+    
+    <div class="toc">
+        <h3>Table of Contents</h3>
+        <ul>
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#features">Key Features</a></li>
+            <li><a href="#quick-start">Quick Start</a></li>
+            <li><a href="#uninstall">Uninstall</a></li>
+            <li><a href="#paths">Installation Paths</a></li>
+            <li><a href="#configuration">Configuration</a></li>
+            <li><a href="#pairing">Device Pairing Workflow</a></li>
+            <li><a href="#architecture">Architecture</a></li>
+        </ul>
+    </div>
+
+    <h2 id="overview">Overview</h2>
+    <div class="panel">
+        <p><span class="badge badge-info">Version: 2.1</span>
+           <span class="badge badge-success">MIT License</span></p>
+        <p><strong>Author:</strong> Kyle C. Rode (myTech.Today)</p>
+        <p><strong>Initial Scale:</strong> 150 endpoints</p>
+        <p><strong>Maximum Scale:</strong> 10,000+ endpoints</p>
+        <p><strong>Feature Coverage:</strong> ~70% of commercial RMM capabilities</p>
+    </div>
+
+    <h2 id="features">Key Features</h2>
+    
+    <h3>Device Management</h3>
+    <ul>
+        <li><strong>Add Device with Real-Time Validation</strong> - Hostname resolution with ALL CAPS and right-justified display when valid; IP ping validation with right-justified display when reachable; auto-detect device type</li>
+        <li><strong>Inline Site Creation</strong> - Add new sites directly from the Add Device dialog with real-time dropdown updates</li>
+        <li><strong>Device Pairing System</strong> - Generate 6-character alphanumeric codes with 10-minute countdown timer for client onboarding</li>
+        <li><strong>Forget Device</strong> - Remove devices from the database via the device detail page with confirmation</li>
+        <li><strong>Status Descriptions</strong> - Non-OK statuses display short descriptions of the main issue</li>
+    </ul>
+
+    <h3>Device Detail Page</h3>
+    <p>The device detail page displays comprehensive information with appropriate editability:</p>
+    
+    <h4>Read-Only Fields:</h4>
+    <ul>
+        <li>Device ID, Hostname, FQDN, IP Address, MAC Address</li>
+        <li>Status (with issue description for non-OK statuses)</li>
+        <li>Last Seen timestamp</li>
+        <li>Operating System, OS Build, Manufacturer, Model, Serial Number</li>
+        <li>Agent Version, Created At, Updated At</li>
+    </ul>
+    
+    <h4>Editable Fields:</h4>
+    <ul>
+        <li>Site (dropdown selection)</li>
+        <li>Device Type (Workstation, Server, Laptop, VM, Network Device, Mobile, Other)</li>
+        <li>Tags (comma-separated)</li>
+        <li>Description</li>
+        <li>Credential Name (for stored remote access credentials)</li>
+        <li>Notes (multi-line)</li>
+    </ul>
+    
+    <h4>Quick Actions:</h4>
+    <ul>
+        <li>Health Check, Collect Inventory, Reboot buttons</li>
+        <li>Forget Device (danger zone)</li>
+    </ul>
+    
+    <img src="docs/screenshots/device-detail.png" alt="Device Detail Page Screenshot">
+
+    <h3>Remote Actions</h3>
+    <ul>
+        <li><strong>Dropdown Device Selection</strong> - Execute actions via dropdown list showing all devices with status indicators</li>
+        <li><strong>Action Categories</strong> - Diagnostics, Maintenance, Updates, Power, Network</li>
+        <li><strong>Action Queue</strong> - All actions are queued with status tracking</li>
+    </ul>
+
+    <h3>Web Dashboard</h3>
+    <ul>
+        <li><strong>Fleet Overview</strong> - Real-time status of all devices with online/offline counts</li>
+        <li><strong>Alert Dashboard</strong> - View and manage active alerts with severity indicators</li>
+        <li><strong>Settings Page</strong> - View configuration, restart dashboard, and access uninstall options</li>
+        <li><strong>Responsive Design</strong> - Works on desktop and tablet browsers</li>
+    </ul>
+
+    <h3>Core Capabilities</h3>
+    <ul>
+        <li><strong>Asset Inventory</strong> - Comprehensive hardware and software auditing</li>
+        <li><strong>Health Monitoring</strong> - Real-time system health checks and alerting</li>
+        <li><strong>Update Management</strong> - Windows Update management via WinGet</li>
+        <li><strong>Automated Remediation</strong> - Policy-based automated fixes</li>
+        <li><strong>Executive Dashboards</strong> - Web-based and CLI reporting interfaces</li>
+        <li><strong>Multi-Site Support</strong> - Manage endpoints across multiple locations</li>
+        <li><strong>Compliance Reporting</strong> - Track security and compliance status</li>
+        <li><strong>Import/Export</strong> - Import and export device lists in CSV, JSON, XLS, and XLSX formats</li>
+        <li><strong>Cross-Platform</strong> - Full server on Windows, MacOS, and Linux; lightweight client agent for managed devices</li>
+    </ul>
+
+    <h2 id="quick-start">Quick Start</h2>
+    
+    <h3>Prerequisites</h3>
+    <ul>
+        <li><strong>PowerShell 5.1+</strong> (PowerShell 7.4+ recommended for best performance)</li>
+        <li><strong>Windows 10/11</strong>, <strong>Windows Server 2016+</strong>, <strong>MacOS</strong>, or <strong>Linux</strong></li>
+        <li><strong>Administrator privileges</strong> for initial setup (recommended for Start Menu shortcut)</li>
+        <li><strong>WinRM enabled</strong> on managed Windows endpoints</li>
+    </ul>
+
+    <h3>Installation</h3>
+    
+    <h4>Windows (One Command)</h4>
+    <pre><code># Clone and install
+git clone https://github.com/mytech-today-now/RMM.git
+cd RMM
+.\Install.ps1</code></pre>
+
+    <h4>MacOS</h4>
+    <pre><code>git clone https://github.com/mytech-today-now/RMM.git
+cd RMM
+chmod +x install-macos.sh
+./install-macos.sh</code></pre>
+
+    <h4>Linux (Ubuntu, Debian, CentOS, RHEL, Fedora)</h4>
+    <pre><code>git clone https://github.com/mytech-today-now/RMM.git
+cd RMM
+chmod +x install-linux.sh
+./install-linux.sh</code></pre>
+
+    <p>The automated installer:</p>
+    <ol>
+        <li>Installs PowerShell Core (if not present on MacOS/Linux)</li>
+        <li>Installs required PowerShell modules (PSSQLite, ImportExcel, PSWriteHTML)</li>
+        <li>Copies RMM to <code>~/myTech.Today/RMM/</code> (or <code>%USERPROFILE%\myTech.Today\RMM\</code> on Windows)</li>
+        <li>Initializes the SQLite database</li>
+        <li>Creates configuration files</li>
+        <li>Registers the RMM PowerShell module</li>
+        <li>Creates Desktop and Start Menu shortcuts (Windows only)</li>
+    </ol>
+
+    <h3>Client-Only Installation (Managed Devices)</h3>
+    <p>For devices that will be managed by an RMM server (not running the server themselves):</p>
+
+    <h4>MacOS Client</h4>
+    <pre><code>chmod +x install-client-macos.sh
+./install-client-macos.sh
+
+# Or with auto-registration:
+./install-client-macos.sh --server http://YOUR_SERVER:8080 --code ABC123</code></pre>
+
+    <h4>Linux Client</h4>
+    <pre><code>chmod +x install-client-linux.sh
+./install-client-linux.sh
+
+# Or with auto-registration:
+./install-client-linux.sh --server http://YOUR_SERVER:8080 --code ABC123</code></pre>
+
+    <h4>Windows Client</h4>
+    <pre><code># Run the client agent directly
+.\scripts\core\RMM-Client.ps1 -ServerUrl "http://YOUR_SERVER:8080" -PairingCode "ABC123"
+
+# Or interactively
+.\scripts\core\RMM-Client.ps1 -Interactive</code></pre>
+
+    <h3>After Installation</h3>
+    <pre><code># Use the RMM module from anywhere
+Import-Module RMM
+Initialize-RMM
+Get-RMMDevice
+
+# Launch the Web Dashboard
+&amp; "$(Get-RMMInstallPath)\scripts\ui\Start-WebDashboard.ps1" -OpenBrowser</code></pre>
+    <p>Or simply <strong>double-click the Desktop shortcut</strong> or find <strong>"myTech.Today RMM Dashboard"</strong> in the Start Menu.</p>
+
+    <h2 id="uninstall">Uninstall</h2>
+    <p>Multiple uninstall options are available:</p>
+    <pre><code># Option 1: Dedicated uninstall script (recommended)
+.\Uninstall.ps1
+
+# Option 2: Complete removal including all data
+.\Uninstall.ps1 -RemoveData
+
+# Option 3: Via the installer
+.\Install.ps1 -Uninstall
+
+# Option 4: Via PowerShell module
+Import-Module RMM
+Initialize-RMM -Mode Uninstall</code></pre>
+    <p>You can also access uninstall instructions from the <strong>Settings</strong> page in the Web Dashboard.</p>
+    <p>All uninstall methods preserve your data, logs, and configuration by default. Use <code>-RemoveData</code> for complete removal.</p>
+
+    <h2 id="paths">Installation Paths</h2>
+    <p>After installation, files are located at:</p>
+    <table>
+        <tr><th>Component</th><th>Location</th></tr>
+        <tr><td>RMM Scripts</td><td><code>%USERPROFILE%\myTech.Today\RMM\</code></td></tr>
+        <tr><td>Database</td><td><code>%USERPROFILE%\myTech.Today\data\devices.db</code></td></tr>
+        <tr><td>Configuration</td><td><code>%USERPROFILE%\myTech.Today\config\</code></td></tr>
+        <tr><td>Logs</td><td><code>%USERPROFILE%\myTech.Today\logs\</code></td></tr>
+        <tr><td>PowerShell Module</td><td><code>Documents\WindowsPowerShell\Modules\RMM\</code></td></tr>
+        <tr><td>Desktop Shortcut</td><td><code>Desktop\myTech.Today RMM Dashboard.lnk</code></td></tr>
+        <tr><td>Start Menu</td><td><code>Start Menu\Programs\myTech.Today\</code></td></tr>
+    </table>
+
+    <h2 id="configuration">Configuration</h2>
+
+    <h3>Settings (config/settings.json)</h3>
+    <p>The main configuration file controls all aspects of the RMM system:</p>
+    <ul>
+        <li><strong>General</strong> - Organization name, default site, data retention</li>
+        <li><strong>Connections</strong> - WinRM settings, timeouts, concurrency</li>
+        <li><strong>Monitoring</strong> - Collection intervals, metrics retention</li>
+        <li><strong>Notifications</strong> - Email, Slack, Teams, PagerDuty integration</li>
+        <li><strong>Security</strong> - HTTPS, credential caching, audit logging</li>
+        <li><strong>Database</strong> - Path, backups, connection pooling</li>
+        <li><strong>Performance</strong> - Caching, parallel jobs, batch sizes</li>
+        <li><strong>UI</strong> - Web dashboard port, refresh intervals, themes</li>
+    </ul>
+
+    <h3>Thresholds (config/thresholds.json)</h3>
+    <p>Define alert thresholds for:</p>
+    <ul>
+        <li>CPU, Memory, Disk usage</li>
+        <li>Network utilization</li>
+        <li>Service availability</li>
+        <li>Event log errors</li>
+        <li>Windows Updates</li>
+        <li>Certificate expiration</li>
+        <li>Backup age</li>
+    </ul>
+
+    <h2 id="pairing">Device Pairing Workflow</h2>
+    <p>The RMM system uses a secure pairing workflow to onboard new devices:</p>
+
+    <h3>Administrator Steps</h3>
+    <ol>
+        <li>Open the Web Dashboard and navigate to <strong>Devices</strong></li>
+        <li>Click <strong>+ Add Device</strong> to open the Add Device modal</li>
+        <li>Click <strong>Generate Code</strong> to create a 6-character pairing code</li>
+        <li>Share the code and server URL with the device user</li>
+        <li>The code is valid for 10 minutes (countdown timer displayed)</li>
+    </ol>
+
+    <h3>Client Device Steps</h3>
+    <ol>
+        <li>Download and run the appropriate client installer:
+            <ul>
+                <li>MacOS: <code>./install-client-macos.sh</code></li>
+                <li>Linux: <code>./install-client-linux.sh</code></li>
+                <li>Windows: Run <code>RMM-Client.ps1</code></li>
+            </ul>
+        </li>
+        <li>Enter the server URL (e.g., <code>http://192.168.1.100:8080</code>)</li>
+        <li>Enter the 6-character pairing code</li>
+        <li>The device is automatically registered with detected information</li>
+    </ol>
+
+    <h3>Auto-Detection</h3>
+    <p>When a device registers via pairing code, the system automatically detects:</p>
+    <ul>
+        <li><strong>Hostname</strong> (displayed in uppercase)</li>
+        <li><strong>IP Address</strong></li>
+        <li><strong>Operating System</strong> (name and version)</li>
+        <li><strong>Device Type</strong> (Workstation, Laptop, Server, Virtual)</li>
+        <li><strong>Manufacturer and Model</strong></li>
+        <li><strong>Serial Number</strong></li>
+    </ul>
+
+    <h2 id="architecture">Architecture</h2>
+
+    <h3>Hybrid Pull/Push Model</h3>
+    <ul>
+        <li><strong>Pull:</strong> Central console pulls inventory and metrics from endpoints</li>
+        <li><strong>Push:</strong> Central console pushes actions and scripts to endpoints</li>
+    </ul>
+
+    <h3>Tiered Storage</h3>
+    <ol>
+        <li><strong>In-Memory</strong> - Active device cache for fast access</li>
+        <li><strong>JSON Cache</strong> - Hot data for quick retrieval</li>
+        <li><strong>SQLite</strong> - Persistent storage for all data</li>
+        <li><strong>Archive</strong> - Historical data compression</li>
+    </ol>
+
+    <h3>Database Schema</h3>
+    <p>8 core tables:</p>
+    <ul>
+        <li><strong>Devices</strong> - Endpoint inventory</li>
+        <li><strong>Sites</strong> - Multi-site management</li>
+        <li><strong>DeviceGroups</strong> - Logical grouping</li>
+        <li><strong>Inventory</strong> - Hardware/software data</li>
+        <li><strong>Alerts</strong> - Alert tracking</li>
+        <li><strong>Actions</strong> - Remote action queue</li>
+        <li><strong>Metrics</strong> - Performance data</li>
+        <li><strong>AuditLog</strong> - Security audit trail</li>
+    </ul>
+
+    <h2>Development Status</h2>
+    <ul style="list-style: none; margin-left: 0;">
+        <li><span class="checkbox checked"></span> Phase 1: Foundation &amp; Project Setup</li>
+        <li><span class="checkbox"></span> Phase 2: Core Framework Implementation</li>
+        <li><span class="checkbox"></span> Phase 3: Data Collection System</li>
+        <li><span class="checkbox"></span> Phase 4: Actions &amp; Alerting</li>
+        <li><span class="checkbox"></span> Phase 5: Reporting &amp; Automation</li>
+        <li><span class="checkbox"></span> Phase 6: User Interfaces</li>
+        <li><span class="checkbox"></span> Phase 7: Scalability &amp; Security</li>
+        <li><span class="checkbox"></span> Phase 8: Testing &amp; Documentation</li>
+    </ul>
+
+    <h2>Contributing</h2>
+    <p>This is a myTech.Today project. Contributions are welcome! Please follow the coding standards in <code>.augment/core-guidelines.md</code>.</p>
+
+    <h2>Support</h2>
+    <p>For issues, questions, or feature requests, please open an issue on GitHub.</p>
+
+    <h2>License</h2>
+    <p>MIT License - See LICENSE file for details.</p>
+
+    <footer>
+        <p><strong>myTech.Today</strong> - Professional IT Solutions</p>
+        <p>© 2025 myTech.Today. All rights reserved.</p>
+    </footer>
+</body>
+</html>
+

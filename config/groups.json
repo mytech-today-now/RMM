@@ -1,0 +1,93 @@
+{
+  "Groups": [
+    {
+      "GroupId": "servers",
+      "Name": "Servers",
+      "Description": "All server systems",
+      "ParentGroupId": null,
+      "PolicyId": "servers",
+      "Tags": ["production", "critical"],
+      "AutoAssignRules": {
+        "OSName": "Windows Server*"
+      }
+    },
+    {
+      "GroupId": "workstations",
+      "Name": "Workstations",
+      "Description": "All workstation systems",
+      "ParentGroupId": null,
+      "PolicyId": "default",
+      "Tags": ["endpoint"],
+      "AutoAssignRules": {
+        "OSName": "Windows 10*,Windows 11*"
+      }
+    },
+    {
+      "GroupId": "domain-controllers",
+      "Name": "Domain Controllers",
+      "Description": "Active Directory domain controllers",
+      "ParentGroupId": "servers",
+      "PolicyId": "servers",
+      "Tags": ["production", "critical", "ad"],
+      "AutoAssignRules": {
+        "ServiceExists": "NTDS"
+      }
+    },
+    {
+      "GroupId": "file-servers",
+      "Name": "File Servers",
+      "Description": "File and print servers",
+      "ParentGroupId": "servers",
+      "PolicyId": "servers",
+      "Tags": ["production", "storage"],
+      "AutoAssignRules": {
+        "ServiceExists": "LanmanServer"
+      }
+    },
+    {
+      "GroupId": "sql-servers",
+      "Name": "SQL Servers",
+      "Description": "Database servers",
+      "ParentGroupId": "servers",
+      "PolicyId": "servers",
+      "Tags": ["production", "critical", "database"],
+      "AutoAssignRules": {
+        "ServiceExists": "MSSQLSERVER"
+      }
+    },
+    {
+      "GroupId": "web-servers",
+      "Name": "Web Servers",
+      "Description": "IIS and web application servers",
+      "ParentGroupId": "servers",
+      "PolicyId": "servers",
+      "Tags": ["production", "web"],
+      "AutoAssignRules": {
+        "ServiceExists": "W3SVC"
+      }
+    },
+    {
+      "GroupId": "laptops",
+      "Name": "Laptops",
+      "Description": "Mobile devices and laptops",
+      "ParentGroupId": "workstations",
+      "PolicyId": "default",
+      "Tags": ["endpoint", "mobile"],
+      "AutoAssignRules": {
+        "ChassisType": "Laptop,Notebook,Portable"
+      }
+    },
+    {
+      "GroupId": "desktops",
+      "Name": "Desktops",
+      "Description": "Desktop computers",
+      "ParentGroupId": "workstations",
+      "PolicyId": "default",
+      "Tags": ["endpoint", "stationary"],
+      "AutoAssignRules": {
+        "ChassisType": "Desktop,Tower,Mini Tower"
+      }
+    }
+  ]
+}
+
