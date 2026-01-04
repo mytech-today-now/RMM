@@ -241,6 +241,142 @@ Get-RMMDatabase
 
 ---
 
+### Remoting (Workgroup/Non-Domain Support)
+
+The RMM module provides secure remoting functions that automatically handle domain and workgroup environments.
+
+#### Test-RMMRemoteEnvironment
+Analyze connection requirements for a target computer.
+
+```powershell
+Test-RMMRemoteEnvironment -ComputerName <String>
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ComputerName | String | Yes | Target computer hostname or IP |
+
+**Returns:** PSCustomObject with:
+- `LocalIsDomainJoined` - Whether local machine is domain-joined
+- `HTTPSAvailable` - Whether target has HTTPS listener (port 5986)
+- `HTTPAvailable` - Whether target has HTTP listener (port 5985)
+- `InTrustedHosts` - Whether target is in TrustedHosts
+- `RecommendedTransport` - HTTP or HTTPS
+- `RequiresTrustedHost` - Whether TrustedHosts entry is needed
+- `ConnectionReady` - Whether connection should work
+
+**Example:**
+```powershell
+$env = Test-RMMRemoteEnvironment -ComputerName "WORKGROUP-PC"
+if ($env.HTTPSAvailable) { Write-Host "HTTPS available - secure connection possible" }
+```
+
+#### New-RMMRemoteSession
+Create a PSSession with automatic transport and TrustedHosts handling.
+
+```powershell
+New-RMMRemoteSession -ComputerName <String> [-Credential <PSCredential>] [-UseHTTPS] [-RequireHTTPS] [-SkipTrustedHostsManagement]
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ComputerName | String | Yes | Target computer hostname or IP |
+| Credential | PSCredential | No | Credentials for authentication (required for workgroup) |
+| UseHTTPS | Switch | No | Force HTTPS transport |
+| RequireHTTPS | Switch | No | Require HTTPS - fail if not available |
+| SkipTrustedHostsManagement | Switch | No | Do not auto-manage TrustedHosts |
+
+**Returns:** PSSession object if successful, $null if failed.
+
+**Example:**
+```powershell
+# Auto-detect best transport
+$session = New-RMMRemoteSession -ComputerName "SERVER01"
+
+# Require HTTPS for sensitive operations
+$session = New-RMMRemoteSession -ComputerName "WORKGROUP-PC" -Credential $cred -RequireHTTPS
+```
+
+#### Invoke-RMMRemoteCommand
+Execute a command on a remote computer with automatic connection handling.
+
+```powershell
+Invoke-RMMRemoteCommand -ComputerName <String> -ScriptBlock <ScriptBlock> [-ArgumentList <Object[]>] [-Credential <PSCredential>] [-RequireHTTPS]
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ComputerName | String | Yes | Target computer hostname or IP |
+| ScriptBlock | ScriptBlock | Yes | Script block to execute remotely |
+| ArgumentList | Object[] | No | Arguments to pass to the script block |
+| Credential | PSCredential | No | Credentials for authentication |
+| RequireHTTPS | Switch | No | Require HTTPS transport |
+
+**Example:**
+```powershell
+Invoke-RMMRemoteCommand -ComputerName "SERVER01" -ScriptBlock { Get-Service WinRM }
+$result = Invoke-RMMRemoteCommand -ComputerName "WORKGROUP-PC" -Credential $cred -ScriptBlock { param($svc) Get-Service $svc } -ArgumentList "Spooler"
+```
+
+#### Add-RMMTrustedHost
+Safely add a computer to TrustedHosts using concatenation.
+
+```powershell
+Add-RMMTrustedHost -ComputerName <String> [-Temporary <Boolean>]
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| ComputerName | String | Yes | Computer name or IP to add |
+| Temporary | Boolean | No | Mark as temporary for cleanup (default: $true) |
+
+**Example:**
+```powershell
+Add-RMMTrustedHost -ComputerName "WORKGROUP-PC"
+```
+
+#### Clear-RMMTemporaryTrustedHosts
+Remove all temporarily added TrustedHosts entries.
+
+```powershell
+Clear-RMMTemporaryTrustedHosts
+```
+
+**Example:**
+```powershell
+# After completing workgroup operations
+Clear-RMMTemporaryTrustedHosts
+```
+
+#### Set-RMMRemotingPreference
+Configure remoting preferences for the module.
+
+```powershell
+Set-RMMRemotingPreference [-PreferHTTPS <Boolean>] [-AutoManageTrustedHosts <Boolean>]
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| PreferHTTPS | Boolean | No | Prefer HTTPS when available (default: $true) |
+| AutoManageTrustedHosts | Boolean | No | Auto-manage TrustedHosts (default: $true) |
+
+**Example:**
+```powershell
+# Disable automatic TrustedHosts management
+Set-RMMRemotingPreference -AutoManageTrustedHosts $false
+```
+
+#### Get-RMMRemotingPreference
+Get current remoting preferences.
+
+```powershell
+Get-RMMRemotingPreference
+```
+
+**Returns:** PSCustomObject with current preferences and temporary TrustedHosts list.
+
+---
+
 ### Error Codes
 
 | Code | Meaning |

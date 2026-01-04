@@ -45,12 +45,19 @@ function Initialize-RMMLogging {
     .DESCRIPTION
         Loads the shared logging module and initializes logging for the RMM system.
         Tries to load from local path first, then falls back to remote URL.
+        This function is idempotent - subsequent calls with the same ScriptName will be skipped.
 
     .PARAMETER ScriptName
         Name of the script or component (default: "RMM")
 
     .PARAMETER ScriptVersion
         Version of the script (default: "2.0")
+
+    .PARAMETER Force
+        Force reinitialization even if already initialized.
+
+    .PARAMETER Quiet
+        Suppress informational console output during initialization.
 
     .EXAMPLE
         Initialize-RMMLogging
@@ -66,16 +73,29 @@ function Initialize-RMMLogging {
         [string]$ScriptName = "RMM",
 
         [Parameter()]
-        [string]$ScriptVersion = "2.0"
+        [string]$ScriptVersion = "2.0",
+
+        [Parameter()]
+        [switch]$Force,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
     try {
+        # Skip if already initialized for this script (unless Force is specified)
+        if ($script:RMMLogInitialized -and -not $Force) {
+            Write-Verbose "RMM logging already initialized. Use -Force to reinitialize."
+            return
+        }
+
         # Initialize logging with RMM-specific settings
         if ($script:SharedLoggingLoaded) {
-            Write-Host "[INFO] Initializing RMM logging..." -ForegroundColor Cyan
+            if (-not $Quiet) { Write-Verbose "Initializing RMM logging for $ScriptName v$ScriptVersion..." }
             Initialize-Log -ScriptName $ScriptName -ScriptVersion $ScriptVersion
             $script:RMMLogInitialized = $true
-            Write-Host "[OK] RMM logging initialized" -ForegroundColor Green
+            $script:RMMLogScriptName = $ScriptName
+            if (-not $Quiet) { Write-Verbose "RMM logging initialized" }
         }
         else {
             Write-Warning "Shared logging not loaded. Logging will be limited to console output only"

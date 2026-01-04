@@ -110,26 +110,39 @@ function Invoke-RMMParallel {
 function Get-RMMSession {
     <#
     .SYNOPSIS
-        Get or create a cached WinRM session.
+        Get or create a cached WinRM session with automatic transport handling.
     .DESCRIPTION
         Reuses existing sessions from cache or creates new ones. Sessions expire after TTL.
+        Automatically handles workgroup/non-domain environments by:
+        - Preferring HTTPS transport when available (port 5986)
+        - Managing TrustedHosts safely for HTTP fallback
+        - Providing clear error messages for connection issues
     .PARAMETER ComputerName
         Target computer hostname.
     .PARAMETER Credential
-        Optional credential for non-domain computers.
+        Optional credential for non-domain computers (required for workgroup targets).
+    .PARAMETER RequireHTTPS
+        Require HTTPS transport - fail if not available. Default: $false
+    .PARAMETER SkipTrustedHostsManagement
+        Do not automatically manage TrustedHosts. Default: $false
     .EXAMPLE
         $session = Get-RMMSession -ComputerName "SERVER01"
+    .EXAMPLE
+        $session = Get-RMMSession -ComputerName "WORKGROUP-PC" -Credential $cred -RequireHTTPS
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)]
         [string]$ComputerName,
-        [PSCredential]$Credential
+        [PSCredential]$Credential,
+        [switch]$RequireHTTPS,
+        [switch]$SkipTrustedHostsManagement
     )
 
     $cacheKey = $ComputerName.ToLower()
     $now = Get-Date
 
+    # Check for cached session
     if ($script:SessionCache.ContainsKey($cacheKey)) {
         $cached = $script:SessionCache[$cacheKey]
         $age = ($now - $cached.CreatedAt).TotalSeconds
@@ -142,9 +155,20 @@ function Get-RMMSession {
         }
     }
 
-    $sessionParams = @{ ComputerName = $ComputerName; ErrorAction = 'Stop' }
+    # Create new session using secure remoting helper
+    $sessionParams = @{
+        ComputerName = $ComputerName
+    }
     if ($Credential) { $sessionParams.Credential = $Credential }
-    $session = New-PSSession @sessionParams
+    if ($RequireHTTPS) { $sessionParams.RequireHTTPS = $true }
+    if ($SkipTrustedHostsManagement) { $sessionParams.SkipTrustedHostsManagement = $true }
+
+    $session = New-RMMRemoteSession @sessionParams
+
+    if ($null -eq $session) {
+        throw "Failed to create session to '$ComputerName'"
+    }
+
     $script:SessionCache[$cacheKey] = @{ Session = $session; CreatedAt = $now }
     return $session
 }

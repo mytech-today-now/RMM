@@ -71,6 +71,29 @@ The device detail page displays comprehensive information with appropriate edita
 - **Import/Export** - Import and export device lists in CSV, JSON, XLS, and XLSX formats
 - **Cross-Platform** - Full server on Windows, MacOS, and Linux; lightweight client agent for managed devices
 
+### Workgroup & Non-Domain Support
+
+The RMM module automatically handles connections to workgroup (non-domain-joined) computers:
+
+- **HTTPS Preference** - Automatically uses HTTPS (port 5986) when available for secure workgroup connections
+- **Automatic TrustedHosts** - Safely manages TrustedHosts entries for HTTP fallback (adds narrowly, not wildcards)
+- **Environment Detection** - Detects domain vs workgroup scenarios and selects appropriate authentication
+- **Temporary Cleanup** - Tracks temporary TrustedHosts additions for optional cleanup after sessions
+
+```powershell
+# Check connection requirements for a workgroup target
+Test-RMMRemoteEnvironment -ComputerName "WORKGROUP-PC"
+
+# Create a session with automatic transport selection
+$session = New-RMMRemoteSession -ComputerName "WORKGROUP-PC" -Credential $cred
+
+# Require HTTPS for sensitive operations
+$session = New-RMMRemoteSession -ComputerName "WORKGROUP-PC" -Credential $cred -RequireHTTPS
+
+# Clean up temporary TrustedHosts entries
+Clear-RMMTemporaryTrustedHosts
+```
+
 ## Quick Start
 
 ### Prerequisites
@@ -197,12 +220,12 @@ After installation, files are located at:
 | Component | Location |
 |-----------|----------|
 | RMM Scripts | `%USERPROFILE%\myTech.Today\RMM\` |
-| Database | `%USERPROFILE%\myTech.Today\data\devices.db` |
-| Configuration | `%USERPROFILE%\myTech.Today\config\` |
-| Logs | `%USERPROFILE%\myTech.Today\logs\` |
+| Database | `%USERPROFILE%\myTech.Today\RMM\data\devices.db` |
+| Configuration | `%USERPROFILE%\myTech.Today\RMM\config\` |
+| Logs | `%USERPROFILE%\myTech.Today\RMM\logs\` |
 | PowerShell Module | `Documents\WindowsPowerShell\Modules\RMM\` |
-| Desktop Shortcut | `Desktop\myTech.Today RMM Dashboard.lnk` |
-| Start Menu | `Start Menu\Programs\myTech.Today\` |
+| Desktop Shortcut | `Desktop\mTT RMM Dashboard.lnk` |
+| Start Menu | `Start Menu\Programs\myTech.Today\mTT RMM Dashboard.lnk` |
 
 ## Project Structure
 
@@ -276,7 +299,7 @@ The RMM system uses a secure pairing workflow to onboard new devices:
 
 ### Administrator Steps
 
-1. Open the Web Dashboard and navigate to **Devices**
+1. Open the Web Dashboard and navigate to **Sites & Devices**
 2. Click **+ Add Device** to open the Add Device modal
 3. Click **Generate Code** to create a 6-character pairing code
 4. Share the code and server URL with the device user

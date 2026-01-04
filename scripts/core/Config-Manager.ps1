@@ -6,9 +6,14 @@
     Manages settings.json with validation, hot-reload capabilities, and environment-specific overrides.
     Provides functions to get, set, test, reset, export, and import configuration settings.
 
+    Configuration is searched in this order:
+    1. ProgramData (standard installation): C:\ProgramData\myTech.Today\RMM\config\
+    2. Portable mode (running from source): .\config\
+    3. Legacy user profile: %USERPROFILE%\myTech.Today\config\
+
 .NOTES
     Author: Kyle C. Rode (myTech.Today)
-    Version: 2.0
+    Version: 2.1
     Requires: PowerShell 5.1+
 #>
 
@@ -19,9 +24,10 @@ $script:ConfigLastModified = $null
 # Determine config path - check multiple locations in order of preference
 $script:ConfigPath = $null
 $possibleRoots = @(
+    "$env:ProgramData\myTech.Today\RMM",            # Standard installation (ProgramData)
     "$PSScriptRoot\..\..",                          # Portable mode (running from RMM folder)
-    "$env:USERPROFILE\myTech.Today",                # User profile location
-    "$env:ProgramData\myTech.Today\RMM"             # System-wide location
+    "$env:USERPROFILE\myTech.Today\RMM",            # Legacy user profile location
+    "$env:USERPROFILE\myTech.Today"                 # Legacy user profile (old structure)
 )
 
 foreach ($root in $possibleRoots) {
@@ -32,9 +38,9 @@ foreach ($root in $possibleRoots) {
     }
 }
 
-# Default to user profile if no existing config found
+# Default to ProgramData if no existing config found
 if (-not $script:ConfigPath) {
-    $script:ConfigPath = "$env:USERPROFILE\myTech.Today\config\settings.json"
+    $script:ConfigPath = "$env:ProgramData\myTech.Today\RMM\config\settings.json"
 }
 
 function Get-RMMConfiguration {

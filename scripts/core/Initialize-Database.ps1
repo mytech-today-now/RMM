@@ -111,6 +111,8 @@ CREATE TABLE IF NOT EXISTS Devices (
     AgentVersion TEXT,
     Tags TEXT,
     CustomFields TEXT,
+    AdminUsername TEXT,
+    AdminPasswordEncrypted TEXT,
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -142,8 +144,21 @@ CREATE TABLE IF NOT EXISTS SiteURLs (
     SiteId TEXT NOT NULL,
     URL TEXT NOT NULL,
     Label TEXT,
+    Username TEXT,
+    EncryptedPassword TEXT,
     CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (SiteId) REFERENCES Sites(SiteId) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS DeviceURLs (
+    URLId INTEGER PRIMARY KEY AUTOINCREMENT,
+    DeviceId TEXT NOT NULL,
+    URL TEXT NOT NULL,
+    Label TEXT,
+    Username TEXT,
+    EncryptedPassword TEXT,
+    CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (DeviceId) REFERENCES Devices(DeviceId) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS DeviceGroups (

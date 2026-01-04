@@ -300,11 +300,11 @@ $collectionScriptBlock = {
                     }
                 }
 
-                # Local administrators
+                # Local administrators (using secure remoting for workgroup support)
                 try {
-                    $admins = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                    $admins = Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -ScriptBlock {
                         Get-LocalGroupMember -Group "Administrators" -ErrorAction SilentlyContinue
-                    } -ErrorAction SilentlyContinue
+                    }
                     $securityData.LocalAdmins = $admins | ForEach-Object {
                         @{
                             Name = $_.Name

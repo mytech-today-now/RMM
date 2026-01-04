@@ -6,9 +6,13 @@
     Central module that provides the unified API for the RMM system.
     Provides device management, action execution, health monitoring, and configuration functions.
 
+    Installation Paths (Microsoft Best Practices):
+    - Program Files: C:\Program Files (x86)\myTech.Today\RMM\
+    - Data/Config:   C:\ProgramData\myTech.Today\RMM\
+
 .NOTES
     Author: Kyle C. Rode (myTech.Today)
-    Version: 2.0
+    Version: 2.1
     Requires: PowerShell 5.1+, PSSQLite module
 #>
 
@@ -19,38 +23,28 @@
 $script:ModuleRoot = $PSScriptRoot
 $script:RMMInitialized = $false
 
-# Standard installation paths
-$script:InstallRoot = "$env:USERPROFILE\myTech.Today"
-$script:RMMInstallPath = "$env:USERPROFILE\myTech.Today\RMM"
+# Standard installation paths following Microsoft best practices
+# Program Files - read-only application binaries
+$script:RMMInstallPath = "${env:ProgramFiles(x86)}\myTech.Today\RMM"
 
-# Determine data paths - check multiple locations in order of preference
-$script:RMMDataRoot = $null
-$possibleRoots = @(
-    "$env:USERPROFILE\myTech.Today",                # Standard install location (data at root)
-    "$PSScriptRoot\..\..",                          # Portable mode (running from RMM folder)
-    "$env:ProgramData\myTech.Today\RMM"             # System-wide location
-)
+# ProgramData - writable application data (works for SYSTEM and all users)
+$script:RMMDataRoot = "$env:ProgramData\myTech.Today\RMM"
+$script:DataPath = "$script:RMMDataRoot\data"
+$script:ConfigPath = "$script:RMMDataRoot\config"
+$script:LogPath = "$script:RMMDataRoot\logs"
 
-foreach ($root in $possibleRoots) {
-    $testDb = Join-Path $root "data\devices.db"
-    $testConfig = Join-Path $root "config\settings.json"
-    if ((Test-Path $testDb) -or (Test-Path $testConfig)) {
-        $script:RMMDataRoot = $root
-        break
-    }
-}
+# Default paths for database and settings
+$script:DatabasePath = Join-Path $script:DataPath "devices.db"
+$script:SettingsPath = Join-Path $script:ConfigPath "settings.json"
 
-# Default to user profile if no existing installation found
-if (-not $script:RMMDataRoot) {
-    $script:RMMDataRoot = "$env:USERPROFILE\myTech.Today"
-}
-
-$script:DatabasePath = Join-Path $script:RMMDataRoot "data\devices.db"
-$script:ConfigPath = Join-Path $script:RMMDataRoot "config\settings.json"
+# Legacy path support - check if old installation exists for migration
+$script:LegacyInstallPath = "$env:USERPROFILE\myTech.Today\RMM"
+$script:LegacyDatabasePath = "$script:LegacyInstallPath\data\devices.db"
 
 # Import sub-modules
 . "$PSScriptRoot\Config-Manager.ps1"
 . "$PSScriptRoot\Logging.ps1"
+. "$PSScriptRoot\Remoting.ps1"
 . "$PSScriptRoot\Scalability.ps1"
 . "$PSScriptRoot\Security.ps1"
 . "$PSScriptRoot\Database-Maintenance.ps1"
@@ -70,6 +64,9 @@ function Initialize-RMM {
     .PARAMETER Force
         Force reinitialization even if already initialized.
 
+    .PARAMETER Quiet
+        Suppress console output during initialization.
+
     .EXAMPLE
         Initialize-RMM
         Initializes RMM with default settings.
@@ -88,70 +85,92 @@ function Initialize-RMM {
         [string]$DatabasePath,
 
         [Parameter()]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter()]
+        [switch]$Quiet
     )
 
     try {
         if ($script:RMMInitialized -and -not $Force) {
-            Write-Host "[INFO] RMM already initialized. Use -Force to reinitialize." -ForegroundColor Cyan
+            Write-Verbose "RMM already initialized. Use -Force to reinitialize."
             return $true
         }
 
-        Write-Host "[INFO] Initializing myTech.Today RMM..." -ForegroundColor Cyan
+        Write-Verbose "Initializing myTech.Today RMM..."
 
-        # Set database path
+        # Determine database path with fallback support
         if ($DatabasePath) {
+            # Explicit path provided
             $script:DatabasePath = $DatabasePath
+        } elseif (Test-Path $script:DatabasePath) {
+            # New standard location exists - use it
+            Write-Verbose "Using standard path: $($script:DatabasePath)"
+        } elseif (Test-Path $script:LegacyDatabasePath) {
+            # Fall back to legacy location if it exists
+            Write-Verbose "Using legacy path: $($script:LegacyDatabasePath)"
+            Write-Verbose "Consider running install-server-windows.ps1 to migrate to standard paths"
+            $script:DatabasePath = $script:LegacyDatabasePath
+            $script:RMMDataRoot = $script:LegacyInstallPath
+            $script:DataPath = "$script:LegacyInstallPath\data"
+            $script:ConfigPath = "$script:LegacyInstallPath\config"
+            $script:LogPath = "$script:LegacyInstallPath\logs"
+            $script:SettingsPath = "$script:ConfigPath\settings.json"
         }
 
         # Resolve full path
-        $script:DatabasePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($script:DatabasePath)
+        if ($script:DatabasePath -and (Test-Path $script:DatabasePath -IsValid)) {
+            $script:DatabasePath = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($script:DatabasePath)
+        }
 
         # Check if database exists
         if (-not (Test-Path $script:DatabasePath)) {
-            Write-Warning "Database not found at: $script:DatabasePath"
-            Write-Warning "Run Initialize-Database.ps1 first to create the database"
+            if (-not $Quiet) {
+                Write-Warning "Database not found at: $script:DatabasePath"
+                Write-Warning "Run install-server-windows.ps1 to install RMM and create the database"
+            }
             return $false
         }
 
-        # Initialize logging
-        Initialize-RMMLogging -ScriptName "RMM-Core" -ScriptVersion "2.0"
+        # Initialize logging (Quiet mode unless explicitly verbose)
+        Initialize-RMMLogging -ScriptName "RMM-Core" -ScriptVersion "2.1" -Quiet:(-not $VerbosePreference)
 
         # Test database connection
         try {
             $testQuery = "SELECT COUNT(*) as Count FROM sqlite_master WHERE type='table'"
             $result = Invoke-SqliteQuery -DataSource $script:DatabasePath -Query $testQuery -ErrorAction Stop
-            Write-RMMLog "Database connection successful. Tables found: $($result.Count)" -Level SUCCESS
+            Write-Verbose "Database connection successful. Tables found: $($result.Count)"
         }
         catch {
-            Write-RMMLog "Failed to connect to database: $($_.Exception.Message)" -Level ERROR
+            if (-not $Quiet) { Write-RMMLog "Failed to connect to database: $($_.Exception.Message)" -Level ERROR }
             return $false
         }
 
         # Load configuration
         $config = Get-RMMConfiguration
         if (-not $config) {
-            Write-RMMLog "Failed to load configuration" -Level WARNING
+            Write-Verbose "Failed to load configuration"
         }
         else {
-            Write-RMMLog "Configuration loaded successfully" -Level SUCCESS
+            Write-Verbose "Configuration loaded successfully"
         }
 
-        # Validate configuration
+        # Validate configuration - only warn if it fails
         $configValid = Test-RMMConfiguration
         if (-not $configValid) {
-            Write-RMMLog "Configuration validation failed" -Level WARNING
+            Write-Verbose "Configuration validation failed"
         }
 
         $script:RMMInitialized = $true
-        Write-Host "[OK] RMM initialization complete!" -ForegroundColor Green
-        Write-RMMLog "RMM system initialized successfully" -Level SUCCESS
+        Write-Verbose "RMM initialization complete"
 
         return $true
     }
     catch {
-        Write-Error "Failed to initialize RMM: $_"
-        Write-RMMLog "RMM initialization failed: $($_.Exception.Message)" -Level ERROR
+        if (-not $Quiet) {
+            Write-Error "Failed to initialize RMM: $_"
+            Write-RMMLog "RMM initialization failed: $($_.Exception.Message)" -Level ERROR
+        }
         return $false
     }
 }
@@ -230,6 +249,296 @@ function Set-RMMConfig {
     )
 
     return Set-RMMConfiguration @PSBoundParameters
+}
+
+function Get-LocalDeviceInfo {
+    <#
+    .SYNOPSIS
+        Collects detailed local device information.
+
+    .DESCRIPTION
+        Cross-platform function that gathers comprehensive system information
+        including OS details, hardware specs, network configuration, and more.
+        Uses WMI/CIM on Windows, system_profiler on macOS, and lshw/dmidecode on Linux.
+
+    .EXAMPLE
+        Get-LocalDeviceInfo
+        Returns a PSObject with all available device information.
+
+    .OUTPUTS
+        PSCustomObject with properties: Hostname, FQDN, IPAddress, MACAddress,
+        OSName, OSVersion, OSBuild, DeviceType, Manufacturer, Model, SerialNumber
+    #>
+    [CmdletBinding()]
+    [OutputType([PSCustomObject])]
+    param()
+
+    Write-Verbose "Collecting local device information..."
+
+    $info = [PSCustomObject]@{
+        Hostname     = $env:COMPUTERNAME
+        FQDN         = $null
+        IPAddress    = $null
+        MACAddress   = $null
+        OSName       = $null
+        OSVersion    = $null
+        OSBuild      = $null
+        DeviceType   = "Workstation"
+        Manufacturer = $null
+        Model        = $null
+        SerialNumber = $null
+    }
+
+    # Get FQDN
+    try {
+        $info.FQDN = [System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName
+        Write-Verbose "FQDN: $($info.FQDN)"
+    }
+    catch {
+        $info.FQDN = $env:COMPUTERNAME
+        Write-Verbose "Could not resolve FQDN, using hostname: $_"
+    }
+
+    # Platform-specific collection
+    if ($IsWindows -or (-not $IsLinux -and -not $IsMacOS)) {
+        # Windows: Use CIM/WMI
+        Write-Verbose "Collecting Windows system information via CIM..."
+
+        # Network info
+        try {
+            $adapter = Get-NetAdapter -Physical -ErrorAction SilentlyContinue |
+                       Where-Object { $_.Status -eq 'Up' } |
+                       Select-Object -First 1
+            if ($adapter) {
+                $ipConfig = Get-NetIPAddress -InterfaceIndex $adapter.ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                            Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' } |
+                            Select-Object -First 1
+                $info.IPAddress = $ipConfig.IPAddress
+                $info.MACAddress = $adapter.MacAddress
+                Write-Verbose "Network: IP=$($info.IPAddress), MAC=$($info.MACAddress)"
+            }
+        }
+        catch {
+            Write-Verbose "Network collection failed: $_"
+        }
+
+        # Fallback IP if above failed
+        if (-not $info.IPAddress) {
+            try {
+                $ip = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                      Where-Object { $_.IPAddress -notmatch '^(127\.|169\.254\.)' -and $_.PrefixOrigin -ne 'WellKnown' } |
+                      Select-Object -First 1
+                $info.IPAddress = $ip.IPAddress
+                Write-Verbose "Fallback IP: $($info.IPAddress)"
+            }
+            catch {
+                Write-Verbose "Fallback IP collection failed: $_"
+            }
+        }
+
+        # OS information
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction Stop
+            $info.OSName = $os.Caption
+            $info.OSVersion = $os.Version
+            $info.OSBuild = $os.BuildNumber
+            Write-Verbose "OS: $($info.OSName) v$($info.OSVersion) (Build $($info.OSBuild))"
+
+            # Determine if server
+            if ($os.ProductType -eq 2 -or $os.ProductType -eq 3) {
+                $info.DeviceType = "Server"
+            }
+        }
+        catch {
+            Write-Warning "Could not retrieve OS information: $_"
+        }
+
+        # Hardware information
+        try {
+            $cs = Get-CimInstance Win32_ComputerSystem -ErrorAction Stop
+            $info.Manufacturer = $cs.Manufacturer
+            $info.Model = $cs.Model
+            Write-Verbose "Hardware: $($info.Manufacturer) $($info.Model)"
+
+            # Refine device type based on chassis
+            if ($info.DeviceType -ne "Server") {
+                switch ($cs.PCSystemType) {
+                    1 { $info.DeviceType = "Desktop" }
+                    2 { $info.DeviceType = "Laptop" }
+                    3 { $info.DeviceType = "Workstation" }
+                    4 { $info.DeviceType = "Server" }
+                    5 { $info.DeviceType = "Server" }
+                }
+            }
+
+            # Check for virtual machine
+            if ($cs.Model -match 'Virtual|VMware|Hyper-V|VirtualBox|QEMU|KVM|Parallels') {
+                $info.DeviceType = "Virtual"
+                Write-Verbose "Virtual machine detected"
+            }
+        }
+        catch {
+            Write-Warning "Could not retrieve hardware information: $_"
+        }
+
+        # Serial number from BIOS
+        try {
+            $bios = Get-CimInstance Win32_BIOS -ErrorAction Stop
+            $info.SerialNumber = $bios.SerialNumber
+            Write-Verbose "Serial: $($info.SerialNumber)"
+        }
+        catch {
+            Write-Verbose "Could not retrieve BIOS serial: $_"
+        }
+    }
+    elseif ($IsMacOS) {
+        # macOS: Use system_profiler and sw_vers
+        Write-Verbose "Collecting macOS system information..."
+
+        $info.Manufacturer = "Apple"
+
+        # OS info
+        try {
+            $info.OSName = "macOS"
+            $info.OSVersion = (sw_vers -productVersion 2>$null) -join ''
+            $info.OSBuild = (sw_vers -buildVersion 2>$null) -join ''
+            Write-Verbose "OS: macOS $($info.OSVersion) ($($info.OSBuild))"
+        }
+        catch {
+            Write-Verbose "Could not get macOS version: $_"
+        }
+
+        # Hardware info
+        try {
+            $info.Model = (sysctl -n hw.model 2>$null) -join ''
+            $hwInfo = system_profiler SPHardwareDataType 2>$null
+            if ($hwInfo) {
+                $serialMatch = $hwInfo | Select-String 'Serial Number.*:\s*(.+)$'
+                if ($serialMatch) {
+                    $info.SerialNumber = $serialMatch.Matches[0].Groups[1].Value.Trim()
+                }
+            }
+            Write-Verbose "Hardware: Apple $($info.Model), Serial: $($info.SerialNumber)"
+        }
+        catch {
+            Write-Verbose "Could not get macOS hardware info: $_"
+        }
+
+        # Network info
+        try {
+            $ifconfig = ifconfig 2>$null
+            $ipMatch = $ifconfig | Select-String 'inet\s+(\d+\.\d+\.\d+\.\d+)' |
+                       Where-Object { $_.Matches[0].Groups[1].Value -notmatch '^127\.' } |
+                       Select-Object -First 1
+            if ($ipMatch) {
+                $info.IPAddress = $ipMatch.Matches[0].Groups[1].Value
+            }
+            $macMatch = $ifconfig | Select-String 'ether\s+([0-9a-f:]+)' | Select-Object -First 1
+            if ($macMatch) {
+                $info.MACAddress = $macMatch.Matches[0].Groups[1].Value.ToUpper()
+            }
+            Write-Verbose "Network: IP=$($info.IPAddress), MAC=$($info.MACAddress)"
+        }
+        catch {
+            Write-Verbose "Could not get macOS network info: $_"
+        }
+
+        # Device type - check if laptop
+        if ($info.Model -match 'MacBook') {
+            $info.DeviceType = "Laptop"
+        }
+        elseif ($info.Model -match 'Mac Pro|Mac Studio') {
+            $info.DeviceType = "Workstation"
+        }
+        else {
+            $info.DeviceType = "Desktop"
+        }
+    }
+    elseif ($IsLinux) {
+        # Linux: Use various system commands
+        Write-Verbose "Collecting Linux system information..."
+
+        # Hostname (Linux-style)
+        if (-not $info.Hostname) {
+            $info.Hostname = (hostname 2>$null) -join ''
+        }
+
+        # OS info from /etc/os-release
+        try {
+            if (Test-Path /etc/os-release) {
+                $osRelease = Get-Content /etc/os-release -ErrorAction Stop
+                $prettyName = $osRelease | Select-String '^PRETTY_NAME="?([^"]+)"?$'
+                if ($prettyName) {
+                    $info.OSName = $prettyName.Matches[0].Groups[1].Value
+                }
+                else {
+                    $info.OSName = "Linux"
+                }
+            }
+            $info.OSVersion = (uname -r 2>$null) -join ''
+            Write-Verbose "OS: $($info.OSName) $($info.OSVersion)"
+        }
+        catch {
+            $info.OSName = "Linux"
+            Write-Verbose "Could not get Linux OS info: $_"
+        }
+
+        # Hardware info - try dmidecode (requires root) or lshw
+        try {
+            if (Get-Command dmidecode -ErrorAction SilentlyContinue) {
+                $dmi = sudo dmidecode -s system-manufacturer 2>$null
+                if ($dmi) { $info.Manufacturer = ($dmi -join '').Trim() }
+
+                $dmi = sudo dmidecode -s system-product-name 2>$null
+                if ($dmi) { $info.Model = ($dmi -join '').Trim() }
+
+                $dmi = sudo dmidecode -s system-serial-number 2>$null
+                if ($dmi) { $info.SerialNumber = ($dmi -join '').Trim() }
+            }
+            elseif (Get-Command lshw -ErrorAction SilentlyContinue) {
+                $lshw = sudo lshw -class system -short 2>$null
+                # Parse lshw output if available
+            }
+            Write-Verbose "Hardware: $($info.Manufacturer) $($info.Model)"
+        }
+        catch {
+            Write-Verbose "Could not get Linux hardware info (may need root): $_"
+        }
+
+        # Network info
+        try {
+            if (Get-Command ip -ErrorAction SilentlyContinue) {
+                $ipAddr = ip -4 addr show 2>$null
+                $ipMatch = $ipAddr | Select-String 'inet\s+(\d+\.\d+\.\d+\.\d+)' |
+                           Where-Object { $_.Matches[0].Groups[1].Value -notmatch '^127\.' } |
+                           Select-Object -First 1
+                if ($ipMatch) {
+                    $info.IPAddress = $ipMatch.Matches[0].Groups[1].Value
+                }
+
+                $linkInfo = ip link show 2>$null
+                $macMatch = $linkInfo | Select-String 'link/ether\s+([0-9a-f:]+)' | Select-Object -First 1
+                if ($macMatch) {
+                    $info.MACAddress = $macMatch.Matches[0].Groups[1].Value.ToUpper()
+                }
+            }
+            Write-Verbose "Network: IP=$($info.IPAddress), MAC=$($info.MACAddress)"
+        }
+        catch {
+            Write-Verbose "Could not get Linux network info: $_"
+        }
+
+        # Check if virtual
+        if (Test-Path /sys/class/dmi/id/product_name) {
+            $product = Get-Content /sys/class/dmi/id/product_name -ErrorAction SilentlyContinue
+            if ($product -match 'Virtual|VMware|VirtualBox|QEMU|KVM') {
+                $info.DeviceType = "Virtual"
+            }
+        }
+    }
+
+    Write-Verbose "Device info collection complete"
+    return $info
 }
 
 function Get-RMMDevice {
@@ -594,6 +903,128 @@ function Update-RMMDevice {
     catch {
         Write-Error "Failed to update device: $_"
         Write-RMMLog "Failed to update device ${DeviceId}: $($_.Exception.Message)" -Level ERROR
+    }
+}
+
+function Update-RMMDeviceInfo {
+    <#
+    .SYNOPSIS
+        Updates device system information from live collection.
+
+    .DESCRIPTION
+        Refreshes device hardware, OS, and network information in the database
+        by collecting current system data. Useful after hardware changes,
+        OS upgrades, or to fix incomplete device records.
+
+    .PARAMETER DeviceId
+        The device ID to update. If not specified, updates the local device.
+
+    .PARAMETER Hostname
+        The hostname to find and update. If not specified, uses local hostname.
+
+    .EXAMPLE
+        Update-RMMDeviceInfo
+        Updates the local device's information in the database.
+
+    .EXAMPLE
+        Update-RMMDeviceInfo -Hostname "SERVER01"
+        Updates system info for SERVER01 (collects from local if matching hostname).
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param(
+        [Parameter()]
+        [string]$DeviceId,
+
+        [Parameter()]
+        [string]$Hostname
+    )
+
+    try {
+        if (-not $script:RMMInitialized) {
+            Write-Warning "RMM not initialized. Call Initialize-RMM first."
+            return
+        }
+
+        # Determine which device to update
+        if (-not $DeviceId -and -not $Hostname) {
+            $Hostname = $env:COMPUTERNAME
+        }
+
+        # Find the device
+        $device = $null
+        if ($DeviceId) {
+            $device = Get-RMMDevice -DeviceId $DeviceId
+        }
+        else {
+            $device = Get-RMMDevice -Hostname $Hostname
+        }
+
+        if (-not $device) {
+            Write-Warning "Device not found: $(if ($DeviceId) { $DeviceId } else { $Hostname })"
+            return
+        }
+
+        # Can only collect live info for the local device
+        $isLocal = $device.Hostname -eq $env:COMPUTERNAME
+
+        if (-not $isLocal) {
+            Write-Warning "Cannot collect live system info for remote device '$($device.Hostname)'. Use Inventory-Collector.ps1 for remote devices."
+            return
+        }
+
+        Write-Host "Collecting system information for $($device.Hostname)..." -ForegroundColor Cyan
+
+        # Get current system info
+        $info = Get-LocalDeviceInfo
+
+        if ($PSCmdlet.ShouldProcess($device.Hostname, "Update device system information")) {
+            $query = @"
+UPDATE Devices SET
+    FQDN = @FQDN,
+    IPAddress = @IPAddress,
+    MACAddress = @MACAddress,
+    OSName = @OSName,
+    OSVersion = @OSVersion,
+    OSBuild = @OSBuild,
+    DeviceType = @DeviceType,
+    Manufacturer = @Manufacturer,
+    Model = @Model,
+    SerialNumber = @SerialNumber,
+    LastSeen = CURRENT_TIMESTAMP,
+    UpdatedAt = CURRENT_TIMESTAMP
+WHERE DeviceId = @DeviceId
+"@
+
+            $params = @{
+                DeviceId     = $device.DeviceId
+                FQDN         = $info.FQDN
+                IPAddress    = $info.IPAddress
+                MACAddress   = $info.MACAddress
+                OSName       = $info.OSName
+                OSVersion    = $info.OSVersion
+                OSBuild      = $info.OSBuild
+                DeviceType   = $info.DeviceType
+                Manufacturer = $info.Manufacturer
+                Model        = $info.Model
+                SerialNumber = $info.SerialNumber
+            }
+
+            Invoke-SqliteQuery -DataSource $script:DatabasePath -Query $query -SqlParameters $params
+
+            Write-Host "[OK] Device info updated: $($device.Hostname)" -ForegroundColor Green
+            Write-Host "     OS: $($info.OSName) $($info.OSVersion)" -ForegroundColor Gray
+            Write-Host "     Hardware: $($info.Manufacturer) $($info.Model)" -ForegroundColor Gray
+            Write-Host "     Serial: $($info.SerialNumber)" -ForegroundColor Gray
+            Write-RMMLog "Device info refreshed: $($device.Hostname)" -Level SUCCESS
+            Write-RMMDeviceLog -DeviceId $device.DeviceId -Message "Device system information updated" -Level INFO
+
+            # Return updated device
+            return Get-RMMDevice -DeviceId $device.DeviceId
+        }
+    }
+    catch {
+        Write-Error "Failed to update device info: $_"
+        Write-RMMLog "Failed to update device info: $($_.Exception.Message)" -Level ERROR
     }
 }
 
@@ -1652,9 +2083,11 @@ Export-ModuleMember -Function @(
     'Initialize-RMM',
     'Get-RMMConfig',
     'Set-RMMConfig',
+    'Get-LocalDeviceInfo',
     'Get-RMMDevice',
     'Add-RMMDevice',
     'Update-RMMDevice',
+    'Update-RMMDeviceInfo',
     'Remove-RMMDevice',
     'Invoke-RMMAction',
     'Get-RMMHealth',
@@ -1670,6 +2103,20 @@ Export-ModuleMember -Function @(
     # Import/Export functions
     'Import-RMMDevices',
     'Export-RMMDevices',
+    # Remoting functions
+    'Test-RMMDomainMembership',
+    'Test-RMMRemoteHTTPS',
+    'Test-RMMRemoteHTTP',
+    'Test-RMMRemoteEnvironment',
+    'Get-RMMTrustedHosts',
+    'Test-RMMInTrustedHosts',
+    'Add-RMMTrustedHost',
+    'Remove-RMMTrustedHost',
+    'Clear-RMMTemporaryTrustedHosts',
+    'New-RMMRemoteSession',
+    'Invoke-RMMRemoteCommand',
+    'Set-RMMRemotingPreference',
+    'Get-RMMRemotingPreference',
     # Scalability functions
     'Invoke-RMMParallel',
     'Get-RMMSession',
@@ -1685,6 +2132,8 @@ Export-ModuleMember -Function @(
     'Get-RMMCredential',
     'Remove-RMMCredential',
     'Get-RMMCredentialList',
+    'Protect-RMMString',
+    'Unprotect-RMMString',
     'Set-RMMUserRole',
     'Get-RMMUserRole',
     'Test-RMMPermission',
@@ -1702,3 +2151,13 @@ Export-ModuleMember -Function @(
     'Get-RMMErrorCategory'
 )
 
+# Auto-initialize RMM when module is imported (silent mode)
+# This allows Get-RMMDevice etc. to work immediately after Import-Module RMM
+if (-not $script:RMMInitialized) {
+    # Check if database exists at standard or legacy location
+    $dbExists = (Test-Path $script:DatabasePath) -or (Test-Path $script:LegacyDatabasePath)
+    if ($dbExists) {
+        # Silent initialization - no console output
+        $null = Initialize-RMM -Quiet
+    }
+}

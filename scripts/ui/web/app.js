@@ -188,5 +188,22 @@ async function updateCharts() {
     } catch (e) { console.error('Error updating charts:', e); }
 }
 
+// Open Readme documentation in new tab - fetch and render HTML
+function openReadme() {
+    fetch('https://raw.githubusercontent.com/mytech-today-now/RMM/refs/heads/main/readme.html')
+        .then(response => {
+            if (!response.ok) throw new Error('Failed to fetch readme');
+            return response.text();
+        })
+        .then(html => {
+            const newTab = window.open('', '_blank');
+            newTab.document.write(html);
+            newTab.document.close();
+        })
+        .catch(err => {
+            alert('Error loading readme: ' + err.message);
+        });
+}
+
 document.addEventListener('DOMContentLoaded', () => { loadDashboardData(); initCharts(); startAutoRefresh(); });
 console.log('myTech.Today RMM Dashboard loaded');

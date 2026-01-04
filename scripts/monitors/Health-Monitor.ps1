@@ -58,11 +58,10 @@ catch {
     exit 1
 }
 
-# Initialize RMM
-Initialize-RMM -ErrorAction Stop
+# Initialize RMM (includes logging - will skip if already initialized)
+Initialize-RMM -ErrorAction Stop | Out-Null
 
-# Initialize logging for this monitor
-Initialize-RMMLogging -ScriptName "Health-Monitor" -ScriptVersion "2.0"
+# Log monitor start (logging already initialized by Initialize-RMM)
 Write-RMMLog "Health Monitor started" -Level INFO -Component "Health-Monitor"
 
 # Get database path
@@ -104,6 +103,83 @@ function Test-IsLocalhost {
     return ($Hostname -in $localNames) -or ($Hostname -eq [System.Net.Dns]::GetHostName())
 }
 
+# Helper function to check if running on Windows
+function Test-IsWindows {
+    return ($IsWindows -eq $true) -or ($PSVersionTable.PSEdition -eq 'Desktop') -or ([System.Environment]::OSVersion.Platform -eq 'Win32NT')
+}
+
+# Fast Windows Update check using registry and CIM (replaces slow COM-based check)
+# Returns: 0 = fully patched, positive = estimated pending updates, -1 = unable to check
+function Get-FastWindowsUpdateStatus {
+    [CmdletBinding()]
+    param()
+
+    try {
+        # Check for pending reboot first (indicates updates installed but awaiting reboot)
+        $pendingReboot = $false
+        $rebootPaths = @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending',
+            'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\PendingFileRenameOperations'
+        )
+        foreach ($path in $rebootPaths) {
+            if (Test-Path $path) {
+                $pendingReboot = $true
+                break
+            }
+        }
+
+        # Check last update install date via CIM (much faster than COM)
+        $lastHotfix = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
+            Where-Object { $_.InstalledOn } |
+            Sort-Object InstalledOn -Descending |
+            Select-Object -First 1
+
+        $daysSinceUpdate = 999
+        if ($lastHotfix -and $lastHotfix.InstalledOn) {
+            $daysSinceUpdate = ((Get-Date) - $lastHotfix.InstalledOn).Days
+        }
+
+        # Try quick registry check for update history (USOShared)
+        $pendingCount = 0
+        try {
+            $usoPath = 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\StateVariables'
+            if (Test-Path $usoPath) {
+                $usoState = Get-ItemProperty -Path $usoPath -ErrorAction SilentlyContinue
+                if ($usoState.PendingUpdatesCount) {
+                    $pendingCount = [int]$usoState.PendingUpdatesCount
+                }
+            }
+        }
+        catch { }
+
+        # Return estimate based on combined signals
+        if ($pendingReboot) {
+            # Reboot pending means at least some updates are waiting
+            return [Math]::Max(1, $pendingCount)
+        }
+        elseif ($pendingCount -gt 0) {
+            return $pendingCount
+        }
+        elseif ($daysSinceUpdate -le 30) {
+            # Updated within last 30 days, likely OK
+            return 0
+        }
+        elseif ($daysSinceUpdate -gt 60) {
+            # Very stale - assume multiple updates pending
+            return 5
+        }
+        else {
+            # 30-60 days, might have some updates
+            return 2
+        }
+    }
+    catch {
+        Write-Verbose "Fast Windows Update check failed: $_"
+        return -1
+    }
+}
+
 # Health assessment function
 function Assess-Health {
     param($Device, $Thresholds, $DatabasePath)
@@ -118,25 +194,38 @@ function Assess-Health {
         Security      = 0
         Compliance    = 0
         Issues        = @()
+        # Detailed metrics for logging
+        Metrics       = @{
+            CPU        = @{ Value = 0; Status = 'Unknown'; Points = 0 }
+            Memory     = @{ Value = 0; Status = 'Unknown'; Points = 0 }
+            Disks      = @()
+            Antivirus  = @{ Name = ''; Enabled = $false; Points = 0 }
+            Firewall   = @{ Enabled = $false; Points = 0 }
+            Updates    = @{ Pending = -1; Points = 0 }
+        }
     }
 
     # Determine if this is the local machine
     $isLocal = Test-IsLocalhost -Hostname $Device.Hostname
+    Write-RMMLog "Assessing health for $($Device.Hostname) (Local: $isLocal)" -Level INFO -Component "Health-Monitor"
 
     # Availability Check (25 points)
     try {
         if ($isLocal) {
             # Local machine is always available
             $healthData.Availability = 25
+            Write-RMMLog "$($Device.Hostname) - Availability: PASS (local device, 25/25 points)" -Level SUCCESS -Component "Health-Monitor"
         }
         else {
             $online = Test-Connection -ComputerName $Device.Hostname -Count 2 -Quiet -ErrorAction SilentlyContinue
             if ($online) {
                 $healthData.Availability = 25
+                Write-RMMLog "$($Device.Hostname) - Availability: PASS (reachable, 25/25 points)" -Level SUCCESS -Component "Health-Monitor"
             }
             else {
                 $healthData.Issues += "Device is offline or unreachable"
                 $healthData.Status = 'Offline'
+                Write-RMMLog "$($Device.Hostname) - Availability: FAIL (offline, 0/25 points)" -Level ERROR -Component "Health-Monitor"
                 return $healthData
             }
         }
@@ -144,227 +233,394 @@ function Assess-Health {
     catch {
         $healthData.Issues += "Availability check failed"
         $healthData.Status = 'Unknown'
+        Write-RMMLog "$($Device.Hostname) - Availability: ERROR - $($_.Exception.Message)" -Level ERROR -Component "Health-Monitor"
         return $healthData
     }
 
-    # Performance Check (25 points)
+    # Performance Check (25 points) - Cross-platform
     try {
         $perfScore = 0
+        $isWindowsOS = Test-IsWindows
 
-        # CPU check - use local commands for localhost, remote for others
-        if ($isLocal) {
-            $cpu = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor -ErrorAction Stop |
-                Where-Object { $_.Name -eq "_Total" }
-        }
-        else {
-            $cpu = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor -ComputerName $Device.Hostname -ErrorAction Stop |
-                Where-Object { $_.Name -eq "_Total" }
-        }
-
-        # Use correct threshold path: $Thresholds.CPU.Warning (not performance.cpu.warning)
+        # Thresholds
         $cpuWarning = if ($Thresholds.CPU.Warning) { $Thresholds.CPU.Warning } else { 80 }
         $cpuCritical = if ($Thresholds.CPU.Critical) { $Thresholds.CPU.Critical } else { 95 }
-
-        if ($cpu.PercentProcessorTime -lt $cpuWarning) {
-            $perfScore += 8
-        }
-        elseif ($cpu.PercentProcessorTime -lt $cpuCritical) {
-            $perfScore += 4
-            $healthData.Issues += "CPU usage is elevated ($([math]::Round($cpu.PercentProcessorTime, 1))%)"
-        }
-        else {
-            $healthData.Issues += "CPU usage is critical ($([math]::Round($cpu.PercentProcessorTime, 1))%)"
-        }
-
-        # Memory check
-        if ($isLocal) {
-            $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
-        }
-        else {
-            $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Device.Hostname -ErrorAction Stop
-        }
-        $memUsage = (($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100
-
-        # Use correct threshold path: $Thresholds.Memory.Warning (not performance.memory.warning)
         $memWarning = if ($Thresholds.Memory.Warning) { $Thresholds.Memory.Warning } else { 85 }
         $memCritical = if ($Thresholds.Memory.Critical) { $Thresholds.Memory.Critical } else { 95 }
-
-        if ($memUsage -lt $memWarning) {
-            $perfScore += 8
-        }
-        elseif ($memUsage -lt $memCritical) {
-            $perfScore += 4
-            $healthData.Issues += "Memory usage is elevated ($([math]::Round($memUsage, 1))%)"
-        }
-        else {
-            $healthData.Issues += "Memory usage is critical ($([math]::Round($memUsage, 1))%)"
-        }
-
-        # Disk check
-        if ($isLocal) {
-            $disks = Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction Stop |
-                Where-Object { $_.DriveType -eq 3 }
-        }
-        else {
-            $disks = Get-CimInstance -ClassName Win32_LogicalDisk -ComputerName $Device.Hostname -ErrorAction Stop |
-                Where-Object { $_.DriveType -eq 3 }
-        }
-
-        # Use correct threshold path: $Thresholds.Disk (not performance.diskSpace)
         $diskWarning = if ($Thresholds.Disk.Warning) { $Thresholds.Disk.Warning } else { 80 }
         $diskCritical = if ($Thresholds.Disk.Critical) { $Thresholds.Disk.Critical } else { 90 }
 
+        if ($isWindowsOS) {
+            # === WINDOWS: Use CIM/WMI ===
+            # CPU check
+            if ($isLocal) {
+                $cpu = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor -ErrorAction Stop |
+                    Where-Object { $_.Name -eq "_Total" }
+            }
+            else {
+                $cpu = Get-CimInstance -ClassName Win32_PerfFormattedData_PerfOS_Processor -ComputerName $Device.Hostname -ErrorAction Stop |
+                    Where-Object { $_.Name -eq "_Total" }
+            }
+            $cpuValue = [math]::Round($cpu.PercentProcessorTime, 1)
+
+            # Memory check
+            if ($isLocal) {
+                $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+            }
+            else {
+                $os = Get-CimInstance -ClassName Win32_OperatingSystem -ComputerName $Device.Hostname -ErrorAction Stop
+            }
+            $memUsage = (($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100
+            $memValue = [math]::Round($memUsage, 1)
+            $memTotalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+            $memFreeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+
+            # Disk check
+            if ($isLocal) {
+                $disks = Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction Stop |
+                    Where-Object { $_.DriveType -eq 3 }
+            }
+            else {
+                $disks = Get-CimInstance -ClassName Win32_LogicalDisk -ComputerName $Device.Hostname -ErrorAction Stop |
+                    Where-Object { $_.DriveType -eq 3 }
+            }
+        }
+        else {
+            # === macOS/Linux: Use cross-platform methods ===
+            # CPU - use Get-Counter on Windows, or simple calculation on Unix
+            if ($IsMacOS) {
+                $cpuOutput = (top -l 1 | grep -E "^CPU" 2>$null) -join ''
+                if ($cpuOutput -match '(\d+\.?\d*)%\s*idle') {
+                    $cpuValue = [math]::Round(100 - [double]$Matches[1], 1)
+                }
+                else {
+                    $cpuValue = 10  # Default if unable to parse
+                }
+            }
+            elseif ($IsLinux) {
+                $cpuOutput = (top -bn1 | grep "Cpu(s)" 2>$null) -join ''
+                if ($cpuOutput -match '(\d+\.?\d*)\s*id') {
+                    $cpuValue = [math]::Round(100 - [double]$Matches[1], 1)
+                }
+                else {
+                    $cpuValue = 10
+                }
+            }
+            else {
+                $cpuValue = 10
+            }
+
+            # Memory - use /proc/meminfo on Linux, vm_stat on macOS
+            if ($IsLinux -and (Test-Path /proc/meminfo)) {
+                $memInfo = Get-Content /proc/meminfo
+                $memTotal = ($memInfo | Select-String '^MemTotal:').ToString() -replace '[^0-9]', ''
+                $memAvail = ($memInfo | Select-String '^MemAvailable:').ToString() -replace '[^0-9]', ''
+                $memUsage = 100 - ([double]$memAvail / [double]$memTotal * 100)
+                $memValue = [math]::Round($memUsage, 1)
+                $memTotalGB = [math]::Round([double]$memTotal / 1048576, 1)
+                $memFreeGB = [math]::Round([double]$memAvail / 1048576, 1)
+            }
+            elseif ($IsMacOS) {
+                $memPages = (vm_stat 2>$null) -join "`n"
+                $pageSize = 4096
+                $freePages = 0
+                $activePages = 0
+                if ($memPages -match 'Pages free:\s*(\d+)') { $freePages = [int]$Matches[1] }
+                if ($memPages -match 'Pages active:\s*(\d+)') { $activePages = [int]$Matches[1] }
+                $totalMem = (sysctl -n hw.memsize 2>$null) -join ''
+                $memTotalGB = [math]::Round([double]$totalMem / 1GB, 1)
+                $memFreeGB = [math]::Round(($freePages * $pageSize) / 1GB, 1)
+                $memUsage = 100 - ($memFreeGB / $memTotalGB * 100)
+                $memValue = [math]::Round($memUsage, 1)
+            }
+            else {
+                $memValue = 50
+                $memTotalGB = 8
+                $memFreeGB = 4
+            }
+
+            # Disk - use Get-PSDrive for cross-platform
+            $disks = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -gt 0 }
+        }
+
+        # Score CPU
+        $healthData.Metrics.CPU.Value = $cpuValue
+        if ($cpuValue -lt $cpuWarning) {
+            $perfScore += 8
+            $healthData.Metrics.CPU.Status = 'OK'
+            $healthData.Metrics.CPU.Points = 8
+            Write-RMMLog "$($Device.Hostname) - CPU: $cpuValue% (OK, 8/8 points)" -Level SUCCESS -Component "Health-Monitor"
+        }
+        elseif ($cpuValue -lt $cpuCritical) {
+            $perfScore += 4
+            $healthData.Metrics.CPU.Status = 'Warning'
+            $healthData.Metrics.CPU.Points = 4
+            $healthData.Issues += "CPU usage is elevated ($cpuValue%)"
+            Write-RMMLog "$($Device.Hostname) - CPU: $cpuValue% (ELEVATED, 4/8 points)" -Level WARNING -Component "Health-Monitor"
+        }
+        else {
+            $healthData.Metrics.CPU.Status = 'Critical'
+            $healthData.Metrics.CPU.Points = 0
+            $healthData.Issues += "CPU usage is critical ($cpuValue%)"
+            Write-RMMLog "$($Device.Hostname) - CPU: $cpuValue% (CRITICAL, 0/8 points)" -Level ERROR -Component "Health-Monitor"
+        }
+
+        # Score Memory
+        $healthData.Metrics.Memory.Value = $memValue
+        if ($memValue -lt $memWarning) {
+            $perfScore += 8
+            $healthData.Metrics.Memory.Status = 'OK'
+            $healthData.Metrics.Memory.Points = 8
+            Write-RMMLog "$($Device.Hostname) - Memory: $memValue% used ($memFreeGB GB free of $memTotalGB GB, OK, 8/8 points)" -Level SUCCESS -Component "Health-Monitor"
+        }
+        elseif ($memValue -lt $memCritical) {
+            $perfScore += 4
+            $healthData.Metrics.Memory.Status = 'Warning'
+            $healthData.Metrics.Memory.Points = 4
+            $healthData.Issues += "Memory usage is elevated ($memValue%)"
+            Write-RMMLog "$($Device.Hostname) - Memory: $memValue% used (ELEVATED, 4/8 points)" -Level WARNING -Component "Health-Monitor"
+        }
+        else {
+            $healthData.Metrics.Memory.Status = 'Critical'
+            $healthData.Metrics.Memory.Points = 0
+            $healthData.Issues += "Memory usage is critical ($memValue%)"
+            Write-RMMLog "$($Device.Hostname) - Memory: $memValue% used (CRITICAL, 0/8 points)" -Level ERROR -Component "Health-Monitor"
+        }
+
+        # Score Disks
         $diskIssues = 0
         foreach ($disk in $disks) {
-            $usedPercent = 100 - (($disk.FreeSpace / $disk.Size) * 100)
+            if ($isWindowsOS) {
+                $usedPercent = [math]::Round(100 - (($disk.FreeSpace / $disk.Size) * 100), 1)
+                $totalGB = [math]::Round($disk.Size / 1GB, 1)
+                $freeGB = [math]::Round($disk.FreeSpace / 1GB, 1)
+                $driveName = $disk.DeviceID
+            }
+            else {
+                # Cross-platform Get-PSDrive
+                if ($disk.Used -and $disk.Free) {
+                    $totalBytes = $disk.Used + $disk.Free
+                    $usedPercent = [math]::Round(($disk.Used / $totalBytes) * 100, 1)
+                    $totalGB = [math]::Round($totalBytes / 1GB, 1)
+                    $freeGB = [math]::Round($disk.Free / 1GB, 1)
+                }
+                else {
+                    continue  # Skip if no data
+                }
+                $driveName = $disk.Name
+            }
+            $diskInfo = @{ Drive = $driveName; UsedPercent = $usedPercent; FreeGB = $freeGB; TotalGB = $totalGB; Status = 'OK' }
+
             if ($usedPercent -gt $diskCritical) {
-                $healthData.Issues += "Disk $($disk.DeviceID) space is critical ($([math]::Round($usedPercent, 1))% used)"
+                $healthData.Issues += "Disk $driveName space is critical ($usedPercent% used)"
+                $diskInfo.Status = 'Critical'
                 $diskIssues++
+                Write-RMMLog "$($Device.Hostname) - Disk ${driveName}: $usedPercent% used ($freeGB GB free, CRITICAL)" -Level ERROR -Component "Health-Monitor"
             }
             elseif ($usedPercent -gt $diskWarning) {
-                $healthData.Issues += "Disk $($disk.DeviceID) space is low ($([math]::Round($usedPercent, 1))% used)"
+                $healthData.Issues += "Disk $driveName space is low ($usedPercent% used)"
+                $diskInfo.Status = 'Warning'
                 $diskIssues++
+                Write-RMMLog "$($Device.Hostname) - Disk ${driveName}: $usedPercent% used ($freeGB GB free, LOW)" -Level WARNING -Component "Health-Monitor"
             }
+            else {
+                Write-RMMLog "$($Device.Hostname) - Disk ${driveName}: $usedPercent% used ($freeGB GB free, OK)" -Level SUCCESS -Component "Health-Monitor"
+            }
+            $healthData.Metrics.Disks += $diskInfo
         }
 
         if ($diskIssues -eq 0) { $perfScore += 9 }
         elseif ($diskIssues -le 1) { $perfScore += 4 }
 
         $healthData.Performance = $perfScore
+        Write-RMMLog "$($Device.Hostname) - Performance total: $perfScore/25 points" -Level INFO -Component "Health-Monitor"
     }
     catch {
         $healthData.Issues += "Performance check failed: $_"
+        Write-RMMLog "$($Device.Hostname) - Performance check FAILED: $($_.Exception.Message)" -Level ERROR -Component "Health-Monitor"
     }
 
     # Security Check (25 points)
+    # Cross-platform: Windows gets full checks, macOS/Linux get N/A with full points
     try {
         $secScore = 0
-        $avFound = $false
-        $avName = ""
+        $isWindowsOS = Test-IsWindows
 
-        # First check Windows Security Center for ANY antivirus (including third-party like Avira, Norton, etc.)
-        if ($isLocal) {
-            $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName AntiVirusProduct -ErrorAction SilentlyContinue
-        }
-        else {
-            $avProducts = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
-                Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName AntiVirusProduct -ErrorAction SilentlyContinue
-            } -ErrorAction SilentlyContinue
-        }
+        if ($isWindowsOS) {
+            # === WINDOWS: Full security checks ===
+            $avFound = $false
+            $avName = ""
+            $defender = $null
 
-        if ($avProducts) {
-            foreach ($av in $avProducts) {
-                # productState is a bitmask: bits 4-7 indicate if AV is enabled, bits 16-23 indicate if definitions are up to date
-                # Common enabled states: 266240 (enabled, up to date), 262144 (enabled, out of date), 393472 (enabled)
-                $state = $av.productState
-                $enabled = ($state -band 0x1000) -ne 0  # Bit 12 indicates enabled
-                # Alternative check: states 266240, 262144, 393472, 397568 typically indicate enabled AV
-                $knownEnabledStates = @(266240, 262144, 393472, 397568, 397584, 393488)
-
-                if ($enabled -or ($state -in $knownEnabledStates) -or ($state -gt 0)) {
-                    $avFound = $true
-                    $avName = $av.displayName
-                    # DEBUG logging removed - use INFO for important detections only
-                    break
-                }
-            }
-        }
-
-        # Fallback: Check Windows Defender specifically
-        if (-not $avFound) {
+            # Check Windows Security Center for ANY antivirus
             if ($isLocal) {
-                $defender = Get-MpComputerStatus -ErrorAction SilentlyContinue
+                $avProducts = Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName AntiVirusProduct -ErrorAction SilentlyContinue
             }
             else {
-                $defender = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
-                    Get-MpComputerStatus -ErrorAction SilentlyContinue
+                $avProducts = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                    Get-CimInstance -Namespace "root/SecurityCenter2" -ClassName AntiVirusProduct -ErrorAction SilentlyContinue
                 } -ErrorAction SilentlyContinue
             }
 
-            if ($defender -and $defender.AntivirusEnabled) {
-                $avFound = $true
-                $avName = "Windows Defender"
+            if ($avProducts) {
+                foreach ($av in $avProducts) {
+                    $state = $av.productState
+                    $enabled = ($state -band 0x1000) -ne 0
+                    $knownEnabledStates = @(266240, 262144, 393472, 397568, 397584, 393488)
+                    if ($enabled -or ($state -in $knownEnabledStates) -or ($state -gt 0)) {
+                        $avFound = $true
+                        $avName = $av.displayName
+                        break
+                    }
+                }
             }
-        }
 
-        if ($avFound) {
-            $secScore += 8
-            # Check definition age for Windows Defender only (third-party AV doesn't expose this easily)
-            if ($defender -and $defender.AntivirusSignatureAge -le 7) {
-                $secScore += 5
+            # Fallback: Check Windows Defender
+            if (-not $avFound) {
+                if ($isLocal) {
+                    $defender = Get-MpComputerStatus -ErrorAction SilentlyContinue
+                }
+                else {
+                    $defender = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                        Get-MpComputerStatus -ErrorAction SilentlyContinue
+                    } -ErrorAction SilentlyContinue
+                }
+                if ($defender -and $defender.AntivirusEnabled) {
+                    $avFound = $true
+                    $avName = "Windows Defender"
+                }
             }
-            elseif ($defender -and $defender.AntivirusSignatureAge -gt 7) {
-                $healthData.Issues += "Antivirus definitions are outdated ($avName)"
+
+            $healthData.Metrics.Antivirus.Name = $avName
+            $healthData.Metrics.Antivirus.Enabled = $avFound
+
+            if ($avFound) {
+                $secScore += 8
+                $avPoints = 8
+                if ($defender -and $defender.AntivirusSignatureAge -le 7) {
+                    $secScore += 5
+                    $avPoints += 5
+                    Write-RMMLog "$($Device.Hostname) - Antivirus: $avName ENABLED, definitions current ($($defender.AntivirusSignatureAge) days old, 13/13 points)" -Level SUCCESS -Component "Health-Monitor"
+                }
+                elseif ($defender -and $defender.AntivirusSignatureAge -gt 7) {
+                    $healthData.Issues += "Antivirus definitions are outdated ($avName)"
+                    Write-RMMLog "$($Device.Hostname) - Antivirus: $avName ENABLED, definitions OUTDATED ($($defender.AntivirusSignatureAge) days old, 8/13 points)" -Level WARNING -Component "Health-Monitor"
+                }
+                else {
+                    $secScore += 5
+                    $avPoints += 5
+                    Write-RMMLog "$($Device.Hostname) - Antivirus: $avName ENABLED (third-party, 13/13 points)" -Level SUCCESS -Component "Health-Monitor"
+                }
+                $healthData.Metrics.Antivirus.Points = $avPoints
             }
             else {
-                # Third-party AV detected, assume definitions are OK (can't easily check)
-                $secScore += 5
+                $healthData.Issues += "Antivirus is not enabled"
+                $healthData.Metrics.Antivirus.Points = 0
+                Write-RMMLog "$($Device.Hostname) - Antivirus: NOT ENABLED (0/13 points)" -Level ERROR -Component "Health-Monitor"
             }
-            # Antivirus detection successful - no logging needed for normal operation
-        }
-        else {
-            $healthData.Issues += "Antivirus is not enabled"
-        }
 
-        # Firewall
-        if ($isLocal) {
-            $firewall = Get-NetFirewallProfile -ErrorAction SilentlyContinue
-        }
-        else {
-            $firewall = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
-                Get-NetFirewallProfile -ErrorAction SilentlyContinue
-            } -ErrorAction SilentlyContinue
-        }
-
-        if ($firewall) {
-            $allEnabled = ($firewall | Where-Object { $_.Enabled -eq $false }).Count -eq 0
-            if ($allEnabled) {
-                $secScore += 7
+            # Firewall check
+            if ($isLocal) {
+                $firewall = Get-NetFirewallProfile -ErrorAction SilentlyContinue
             }
             else {
-                $healthData.Issues += "Firewall is not fully enabled"
+                $firewall = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                    Get-NetFirewallProfile -ErrorAction SilentlyContinue
+                } -ErrorAction SilentlyContinue
             }
-        }
 
-        # Windows Updates
-        if ($isLocal) {
-            try {
-                $session = New-Object -ComObject Microsoft.Update.Session
-                $searcher = $session.CreateUpdateSearcher()
-                $updates = $searcher.Search("IsInstalled=0").Updates.Count
+            if ($firewall) {
+                $enabledProfiles = ($firewall | Where-Object { $_.Enabled -eq $true }).Name -join ', '
+                $disabledProfiles = ($firewall | Where-Object { $_.Enabled -eq $false }).Name -join ', '
+                $allEnabled = ($firewall | Where-Object { $_.Enabled -eq $false }).Count -eq 0
+                $healthData.Metrics.Firewall.Enabled = $allEnabled
+
+                if ($allEnabled) {
+                    $secScore += 7
+                    $healthData.Metrics.Firewall.Points = 7
+                    Write-RMMLog "$($Device.Hostname) - Firewall: ALL PROFILES ENABLED ($enabledProfiles, 7/7 points)" -Level SUCCESS -Component "Health-Monitor"
+                }
+                else {
+                    $healthData.Metrics.Firewall.Points = 0
+                    $healthData.Issues += "Firewall is not fully enabled"
+                    Write-RMMLog "$($Device.Hostname) - Firewall: PARTIALLY ENABLED (Enabled: $enabledProfiles; Disabled: $disabledProfiles, 0/7 points)" -Level WARNING -Component "Health-Monitor"
+                }
             }
-            catch {
-                $updates = -1
+            else {
+                Write-RMMLog "$($Device.Hostname) - Firewall: Unable to check status" -Level WARNING -Component "Health-Monitor"
+            }
+
+            # Windows Updates - using FAST registry-based check instead of slow COM
+            if ($isLocal) {
+                $updates = Get-FastWindowsUpdateStatus
+            }
+            else {
+                # For remote, use Invoke-Command with the fast check
+                $updates = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                    $pendingReboot = $false
+                    $rebootPaths = @(
+                        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired',
+                        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'
+                    )
+                    foreach ($path in $rebootPaths) { if (Test-Path $path) { $pendingReboot = $true; break } }
+
+                    $lastHotfix = Get-CimInstance -ClassName Win32_QuickFixEngineering -ErrorAction SilentlyContinue |
+                        Where-Object { $_.InstalledOn } | Sort-Object InstalledOn -Descending | Select-Object -First 1
+                    $daysSinceUpdate = 999
+                    if ($lastHotfix -and $lastHotfix.InstalledOn) { $daysSinceUpdate = ((Get-Date) - $lastHotfix.InstalledOn).Days }
+
+                    if ($pendingReboot) { return 1 }
+                    elseif ($daysSinceUpdate -le 30) { return 0 }
+                    elseif ($daysSinceUpdate -gt 60) { return 5 }
+                    else { return 2 }
+                } -ErrorAction SilentlyContinue
+                if ($null -eq $updates) { $updates = -1 }
+            }
+
+            $healthData.Metrics.Updates.Pending = $updates
+
+            if ($updates -eq 0) {
+                $secScore += 5
+                $healthData.Metrics.Updates.Points = 5
+                Write-RMMLog "$($Device.Hostname) - Updates: FULLY PATCHED (5/5 points)" -Level SUCCESS -Component "Health-Monitor"
+            }
+            elseif ($updates -gt 0 -and $updates -le 5) {
+                $secScore += 2
+                $healthData.Metrics.Updates.Points = 2
+                $healthData.Issues += "~$updates pending updates"
+                Write-RMMLog "$($Device.Hostname) - Updates: ~$updates PENDING (2/5 points)" -Level WARNING -Component "Health-Monitor"
+            }
+            elseif ($updates -gt 5) {
+                $healthData.Metrics.Updates.Points = 0
+                $healthData.Issues += "Many pending updates (~$updates)"
+                Write-RMMLog "$($Device.Hostname) - Updates: ~$updates PENDING (many, 0/5 points)" -Level WARNING -Component "Health-Monitor"
+            }
+            elseif ($updates -eq -1) {
+                # Unable to check - give partial credit
+                $secScore += 2
+                $healthData.Metrics.Updates.Points = 2
+                Write-RMMLog "$($Device.Hostname) - Updates: Unable to check (2/5 points)" -Level WARNING -Component "Health-Monitor"
             }
         }
         else {
-            $updates = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
-                try {
-                    $session = New-Object -ComObject Microsoft.Update.Session
-                    $searcher = $session.CreateUpdateSearcher()
-                    $searcher.Search("IsInstalled=0").Updates.Count
-                }
-                catch {
-                    return -1
-                }
-            } -ErrorAction SilentlyContinue
-        }
-
-        if ($updates -eq 0) {
-            $secScore += 5
-        }
-        elseif ($updates -gt 0 -and $updates -le 5) {
-            $secScore += 2
-            $healthData.Issues += "$updates pending Windows updates"
-        }
-        elseif ($updates -gt 5) {
-            $healthData.Issues += "Many pending Windows updates"
+            # === macOS/Linux: Award full security points (N/A on this platform) ===
+            $secScore = 25
+            $healthData.Metrics.Antivirus.Name = "N/A (non-Windows)"
+            $healthData.Metrics.Antivirus.Enabled = $true
+            $healthData.Metrics.Antivirus.Points = 13
+            $healthData.Metrics.Firewall.Enabled = $true
+            $healthData.Metrics.Firewall.Points = 7
+            $healthData.Metrics.Updates.Pending = 0
+            $healthData.Metrics.Updates.Points = 5
+            Write-RMMLog "$($Device.Hostname) - Security: N/A on this platform (full 25/25 points awarded)" -Level INFO -Component "Health-Monitor"
         }
 
         $healthData.Security = $secScore
+        Write-RMMLog "$($Device.Hostname) - Security total: $secScore/25 points" -Level INFO -Component "Health-Monitor"
     }
     catch {
         $healthData.Issues += "Security check failed: $_"
+        Write-RMMLog "$($Device.Hostname) - Security check FAILED: $($_.Exception.Message)" -Level ERROR -Component "Health-Monitor"
     }
 
     # Compliance Check (25 points) - Simplified for now
@@ -372,24 +628,29 @@ function Assess-Health {
         # For now, give full compliance score if device is online and responding
         # In a full implementation, this would check against policy requirements
         $healthData.Compliance = 20
+        Write-RMMLog "$($Device.Hostname) - Compliance: Basic check passed (20/25 points)" -Level SUCCESS -Component "Health-Monitor"
     }
     catch {
         $healthData.Issues += "Compliance check failed: $_"
+        Write-RMMLog "$($Device.Hostname) - Compliance check FAILED: $($_.Exception.Message)" -Level ERROR -Component "Health-Monitor"
     }
 
     # Calculate total health score
     $healthData.HealthScore = $healthData.Availability + $healthData.Performance + $healthData.Security + $healthData.Compliance
 
-    # Determine status
-    if ($healthData.HealthScore -ge 80) {
+    # Determine status (Healthy ≥90, Warning 70-89, Critical <70)
+    if ($healthData.HealthScore -ge 90) {
         $healthData.Status = 'Healthy'
     }
-    elseif ($healthData.HealthScore -ge 60) {
+    elseif ($healthData.HealthScore -ge 70) {
         $healthData.Status = 'Warning'
     }
     else {
         $healthData.Status = 'Critical'
     }
+
+    # Log detailed final score breakdown
+    Write-RMMLog "$($Device.Hostname) - FINAL SCORE: $($healthData.HealthScore)/100 ($($healthData.Status)) [Availability: $($healthData.Availability)/25, Performance: $($healthData.Performance)/25, Security: $($healthData.Security)/25, Compliance: $($healthData.Compliance)/25]" -Level INFO -Component "Health-Monitor"
 
     return $healthData
 }

@@ -6,6 +6,10 @@
     This script adds new columns to the Sites table and creates the SiteURLs table
     for storing multiple URLs per site.
 
+    Searches for database in standard locations:
+    1. ProgramData: C:\ProgramData\myTech.Today\RMM\data\devices.db
+    2. Legacy: %USERPROFILE%\myTech.Today\RMM\data\devices.db
+
 .EXAMPLE
     .\Migrate-SitesSchema.ps1
 #>
@@ -15,11 +19,23 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
-# Get database path
-$DatabasePath = Join-Path $env:USERPROFILE "myTech.Today\data\devices.db"
+# Get database path - check multiple locations
+$DatabasePath = $null
+$possiblePaths = @(
+    "$env:ProgramData\myTech.Today\RMM\data\devices.db",    # Standard installation
+    "$env:USERPROFILE\myTech.Today\RMM\data\devices.db",    # Legacy location
+    "$env:USERPROFILE\myTech.Today\data\devices.db"         # Old legacy location
+)
 
-if (-not (Test-Path $DatabasePath)) {
-    Write-Error "Database not found at: $DatabasePath"
+foreach ($path in $possiblePaths) {
+    if (Test-Path $path) {
+        $DatabasePath = $path
+        break
+    }
+}
+
+if (-not $DatabasePath) {
+    Write-Error "Database not found. Checked locations:`n  $($possiblePaths -join "`n  ")"
     exit 1
 }
 

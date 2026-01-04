@@ -117,7 +117,7 @@ function Test-Availability {
         }
     }
 
-    # WinRM Test
+    # WinRM Test (checks both HTTP and HTTPS)
     if ($Methods -contains 'WinRM') {
         try {
             $winrm = Test-WSMan -ComputerName $Device.Hostname -ErrorAction SilentlyContinue
@@ -125,23 +125,37 @@ function Test-Availability {
             if ($results.Methods.WinRM) {
                 $results.Online = $true
             }
+
+            # Also check HTTPS availability for workgroup support
+            $httpsAvailable = Test-RMMRemoteHTTPS -ComputerName $Device.Hostname
+            $results.Methods.WinRMHTTPS = $httpsAvailable
         }
         catch {
             $results.Methods.WinRM = $false
+            $results.Methods.WinRMHTTPS = $false
         }
     }
 
-    # Port Check (default: 5985 for WinRM)
+    # Port Check (checks both 5985 HTTP and 5986 HTTPS for WinRM)
     if ($Methods -contains 'Port') {
         try {
-            $port = Test-NetConnection -ComputerName $Device.Hostname -Port 5985 -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
-            $results.Methods.Port = $port.TcpTestSucceeded
-            if ($results.Methods.Port) {
+            # Check HTTP port 5985
+            $portHttp = Test-NetConnection -ComputerName $Device.Hostname -Port 5985 -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            $results.Methods.Port = $portHttp.TcpTestSucceeded
+            $results.Methods.PortHTTP = $portHttp.TcpTestSucceeded
+
+            # Check HTTPS port 5986
+            $portHttps = Test-NetConnection -ComputerName $Device.Hostname -Port 5986 -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+            $results.Methods.PortHTTPS = $portHttps.TcpTestSucceeded
+
+            if ($results.Methods.Port -or $results.Methods.PortHTTPS) {
                 $results.Online = $true
             }
         }
         catch {
             $results.Methods.Port = $false
+            $results.Methods.PortHTTP = $false
+            $results.Methods.PortHTTPS = $false
         }
     }
 

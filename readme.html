@@ -136,6 +136,28 @@
         <li><strong>Cross-Platform</strong> - Full server on Windows, MacOS, and Linux; lightweight client agent for managed devices</li>
     </ul>
 
+    <h3>Workgroup &amp; Non-Domain Support</h3>
+    <div class="panel">
+        <p>The RMM module automatically handles connections to workgroup (non-domain-joined) computers:</p>
+        <ul>
+            <li><strong>HTTPS Preference</strong> - Automatically uses HTTPS (port 5986) when available for secure workgroup connections</li>
+            <li><strong>Automatic TrustedHosts</strong> - Safely manages TrustedHosts entries for HTTP fallback (adds narrowly, not wildcards)</li>
+            <li><strong>Environment Detection</strong> - Detects domain vs workgroup scenarios and selects appropriate authentication</li>
+            <li><strong>Temporary Cleanup</strong> - Tracks temporary TrustedHosts additions for optional cleanup after sessions</li>
+        </ul>
+        <pre><code># Check connection requirements for a workgroup target
+Test-RMMRemoteEnvironment -ComputerName "WORKGROUP-PC"
+
+# Create a session with automatic transport selection
+$session = New-RMMRemoteSession -ComputerName "WORKGROUP-PC" -Credential $cred
+
+# Require HTTPS for sensitive operations
+$session = New-RMMRemoteSession -ComputerName "WORKGROUP-PC" -Credential $cred -RequireHTTPS
+
+# Clean up temporary TrustedHosts entries
+Clear-RMMTemporaryTrustedHosts</code></pre>
+    </div>
+
     <h2 id="quick-start">Quick Start</h2>
     
     <h3>Prerequisites</h3>
@@ -233,12 +255,12 @@ Initialize-RMM -Mode Uninstall</code></pre>
     <table>
         <tr><th>Component</th><th>Location</th></tr>
         <tr><td>RMM Scripts</td><td><code>%USERPROFILE%\myTech.Today\RMM\</code></td></tr>
-        <tr><td>Database</td><td><code>%USERPROFILE%\myTech.Today\data\devices.db</code></td></tr>
-        <tr><td>Configuration</td><td><code>%USERPROFILE%\myTech.Today\config\</code></td></tr>
-        <tr><td>Logs</td><td><code>%USERPROFILE%\myTech.Today\logs\</code></td></tr>
+        <tr><td>Database</td><td><code>%USERPROFILE%\myTech.Today\RMM\data\devices.db</code></td></tr>
+        <tr><td>Configuration</td><td><code>%USERPROFILE%\myTech.Today\RMM\config\</code></td></tr>
+        <tr><td>Logs</td><td><code>%USERPROFILE%\myTech.Today\RMM\logs\</code></td></tr>
         <tr><td>PowerShell Module</td><td><code>Documents\WindowsPowerShell\Modules\RMM\</code></td></tr>
-        <tr><td>Desktop Shortcut</td><td><code>Desktop\myTech.Today RMM Dashboard.lnk</code></td></tr>
-        <tr><td>Start Menu</td><td><code>Start Menu\Programs\myTech.Today\</code></td></tr>
+        <tr><td>Desktop Shortcut</td><td><code>Desktop\mTT RMM Dashboard.lnk</code></td></tr>
+        <tr><td>Start Menu</td><td><code>Start Menu\Programs\myTech.Today\mTT RMM Dashboard.lnk</code></td></tr>
     </table>
 
     <h2 id="configuration">Configuration</h2>
@@ -273,7 +295,7 @@ Initialize-RMM -Mode Uninstall</code></pre>
 
     <h3>Administrator Steps</h3>
     <ol>
-        <li>Open the Web Dashboard and navigate to <strong>Devices</strong></li>
+        <li>Open the Web Dashboard and navigate to <strong>Sites &amp; Devices</strong></li>
         <li>Click <strong>+ Add Device</strong> to open the Add Device modal</li>
         <li>Click <strong>Generate Code</strong> to create a 6-character pairing code</li>
         <li>Share the code and server URL with the device user</li>

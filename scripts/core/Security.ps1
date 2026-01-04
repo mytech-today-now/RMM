@@ -172,6 +172,74 @@ function Get-RMMCredentialList {
     return $credentials
 }
 
+function Protect-RMMString {
+    <#
+    .SYNOPSIS
+        Encrypt a string using DPAPI for database storage.
+    .DESCRIPTION
+        Converts a plain text string to a DPAPI-encrypted base64 string.
+        Only the same user on the same machine can decrypt.
+    .PARAMETER PlainText
+        The plain text string to encrypt.
+    .EXAMPLE
+        $encrypted = Protect-RMMString -PlainText "MyPassword123"
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$PlainText
+    )
+
+    if ([string]::IsNullOrEmpty($PlainText)) {
+        return $null
+    }
+
+    try {
+        $secureString = ConvertTo-SecureString -String $PlainText -AsPlainText -Force
+        $encrypted = ConvertFrom-SecureString -SecureString $secureString
+        return $encrypted
+    }
+    catch {
+        Write-RMMLog -Message "Failed to encrypt string: $_" -Level "Error"
+        return $null
+    }
+}
+
+function Unprotect-RMMString {
+    <#
+    .SYNOPSIS
+        Decrypt a DPAPI-encrypted string from database storage.
+    .DESCRIPTION
+        Converts a DPAPI-encrypted base64 string back to plain text.
+        Only the same user on the same machine can decrypt.
+    .PARAMETER EncryptedText
+        The encrypted string to decrypt.
+    .EXAMPLE
+        $plainText = Unprotect-RMMString -EncryptedText $encrypted
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$EncryptedText
+    )
+
+    if ([string]::IsNullOrEmpty($EncryptedText)) {
+        return $null
+    }
+
+    try {
+        $secureString = ConvertTo-SecureString -String $EncryptedText
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureString)
+        $plainText = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($bstr)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        return $plainText
+    }
+    catch {
+        Write-RMMLog -Message "Failed to decrypt string: $_" -Level "Error"
+        return $null
+    }
+}
+
 #endregion
 
 #region Role-Based Access Control

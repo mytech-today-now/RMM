@@ -17,24 +17,63 @@ All logs are stored in: `%USERPROFILE%\myTech.Today\logs\`
 
 **Symptoms:** "WinRM cannot complete the operation" or "Access denied"
 
-**Solutions:**
+**Automatic Handling:** The RMM module automatically handles most connection issues:
+
+- Prefers HTTPS (port 5986) for workgroup targets when available
+- Automatically manages TrustedHosts for HTTP connections
+- Provides clear error messages with remediation steps
+
+**Diagnostic Commands:**
+
+```powershell
+# Use RMM's built-in environment check
+Test-RMMRemoteEnvironment -ComputerName "TARGET-SERVER"
+
+# This returns:
+# - LocalIsDomainJoined: Whether your machine is domain-joined
+# - HTTPSAvailable: Whether target has HTTPS listener (port 5986)
+# - HTTPAvailable: Whether target has HTTP listener (port 5985)
+# - InTrustedHosts: Whether target is already trusted
+# - RecommendedTransport: HTTP or HTTPS
+# - ConnectionReady: Whether connection should work
+
+# Check current TrustedHosts
+Get-RMMTrustedHosts
+
+# Check remoting preferences
+Get-RMMRemotingPreference
+```
+
+**Manual Solutions (if automatic handling fails):**
 
 ```powershell
 # Test WinRM connectivity
 Test-WSMan -ComputerName "TARGET-SERVER"
 
-# If fails, verify WinRM is enabled on target
-Invoke-Command -ComputerName "TARGET-SERVER" -ScriptBlock { Get-Service WinRM }
+# Check if HTTPS is available (preferred for workgroup)
+Test-RMMRemoteHTTPS -ComputerName "TARGET-SERVER"
 
-# Check TrustedHosts
-Get-Item WSMan:\localhost\Client\TrustedHosts
+# Manually add to TrustedHosts (use -Concatenate to preserve existing entries)
+Set-Item WSMan:\localhost\Client\TrustedHosts -Value "TARGET-SERVER" -Concatenate -Force
 
-# Add to TrustedHosts if needed
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value "TARGET-SERVER" -Force
+# Or use RMM's safe method
+Add-RMMTrustedHost -ComputerName "TARGET-SERVER"
 
 # Test with credentials
 $cred = Get-Credential
-Test-WSMan -ComputerName "TARGET-SERVER" -Credential $cred
+$session = New-RMMRemoteSession -ComputerName "TARGET-SERVER" -Credential $cred
+```
+
+**For Workgroup Environments (HTTPS Recommended):**
+
+```powershell
+# On the target server, configure HTTPS listener:
+$cert = New-SelfSignedCertificate -DnsName "TARGET-SERVER" -CertStoreLocation Cert:\LocalMachine\My
+New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $cert.Thumbprint -Force
+New-NetFirewallRule -Name "WINRM-HTTPS-In-TCP" -DisplayName "WinRM HTTPS" -Direction Inbound -Protocol TCP -LocalPort 5986 -Action Allow
+
+# Then connect with HTTPS requirement:
+$session = New-RMMRemoteSession -ComputerName "TARGET-SERVER" -Credential $cred -RequireHTTPS
 ```
 
 ### 2. Database Locked Errors

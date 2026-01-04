@@ -47,19 +47,19 @@ The `Install.ps1` script performs these steps automatically:
 | Component | Path |
 |-----------|------|
 | RMM Scripts | `%USERPROFILE%\myTech.Today\RMM\` |
-| Database | `%USERPROFILE%\myTech.Today\data\devices.db` |
-| Configuration | `%USERPROFILE%\myTech.Today\config\settings.json` |
-| Logs | `%USERPROFILE%\myTech.Today\logs\` |
-| Secrets | `%USERPROFILE%\myTech.Today\secrets\` |
+| Database | `%USERPROFILE%\myTech.Today\RMM\data\devices.db` |
+| Configuration | `%USERPROFILE%\myTech.Today\RMM\config\settings.json` |
+| Logs | `%USERPROFILE%\myTech.Today\RMM\logs\` |
+| Secrets | `%USERPROFILE%\myTech.Today\RMM\secrets\` |
 | Module | `Documents\WindowsPowerShell\Modules\RMM\` |
-| Desktop Shortcut | `Desktop\myTech.Today RMM Dashboard.lnk` |
-| Start Menu | `Start Menu\Programs\myTech.Today\` |
+| Desktop Shortcut | `Desktop\mTT RMM Dashboard.lnk` |
+| Start Menu | `Start Menu\Programs\myTech.Today\mTT RMM Dashboard.lnk` |
 
 ## After Installation
 
 ### Option 1: Use the Desktop/Start Menu Shortcut
 
-Double-click **"myTech.Today RMM Dashboard"** on your Desktop or find it in the Start Menu under **myTech.Today**.
+Double-click **"mTT RMM Dashboard"** on your Desktop or find it in the Start Menu under **myTech.Today**.
 
 ### Option 2: Use PowerShell
 
@@ -186,18 +186,37 @@ Remove-Item "$env:USERPROFILE\myTech.Today" -Recurse -Force
 
 ## WinRM Configuration
 
+### Automatic TrustedHosts Management (Recommended)
+
+The RMM module **automatically manages TrustedHosts** for workgroup (non-domain) targets. This eliminates the need for manual configuration and improves security by:
+
+- **Preferring HTTPS** (port 5986) when available for workgroup connections
+- **Adding hosts narrowly** to TrustedHosts only when needed (not using wildcards)
+- **Tracking temporary additions** for optional cleanup after sessions
+
+```powershell
+# The module handles TrustedHosts automatically - no manual configuration needed!
+# To check current remoting preferences:
+Get-RMMRemotingPreference
+
+# To customize behavior:
+Set-RMMRemotingPreference -PreferHTTPS $true -AutoManageTrustedHosts $true
+
+# To clean up temporary TrustedHosts entries after a session:
+Clear-RMMTemporaryTrustedHosts
+```
+
 ### On the Central Console (Management Server)
 
 ```powershell
 # Enable WinRM
 Enable-PSRemoting -Force
 
-# Configure TrustedHosts for workgroup environments
-Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*" -Force
-
 # Verify configuration
 Get-Item WSMan:\localhost\Client\TrustedHosts
 ```
+
+> **Security Note:** Avoid using `Set-Item WSMan:\localhost\Client\TrustedHosts -Value "*"` as this trusts all hosts. The RMM module adds specific hosts as needed and can clean them up automatically.
 
 ### On Remote Endpoints
 
@@ -206,10 +225,23 @@ Get-Item WSMan:\localhost\Client\TrustedHosts
 Enable-PSRemoting -Force
 Set-NetFirewallRule -Name "WINRM-HTTP-In-TCP" -RemoteAddress Any
 
-# For HTTPS (recommended for production)
+# For HTTPS (recommended for workgroup/non-domain environments)
 $cert = New-SelfSignedCertificate -DnsName $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My
 New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $cert.Thumbprint -Force
+
+# Open HTTPS port in firewall
+New-NetFirewallRule -Name "WINRM-HTTPS-In-TCP" -DisplayName "WinRM HTTPS" -Direction Inbound -Protocol TCP -LocalPort 5986 -Action Allow
 ```
+
+### Domain vs Workgroup Environments
+
+| Environment | Authentication | Transport | TrustedHosts |
+|-------------|---------------|-----------|--------------|
+| Domain-joined | Kerberos (automatic) | HTTP (5985) | Not required |
+| Workgroup + HTTPS | Certificate | HTTPS (5986) | Not required |
+| Workgroup + HTTP | NTLM | HTTP (5985) | Required (auto-managed) |
+
+The module automatically detects the environment and selects the appropriate connection strategy.
 
 ## First Device Onboarding
 
@@ -246,7 +278,7 @@ SERVER01,server01.domain.local,192.168.1.10,00:15:5D:00:01:01,main,Windows Serve
 The web dashboard provides a user-friendly interface for adding devices:
 
 1. Open the Web Dashboard (http://localhost:8080)
-2. Navigate to **Devices**
+2. Navigate to **Sites & Devices**
 3. Click **"+ Add Device"**
 4. Fill in the device details:
    - **Hostname**: Enter hostname (auto-validates via DNS, shows ✅ if resolved)
@@ -267,7 +299,7 @@ For remote client onboarding:
 
 ### Remove a Device
 
-1. Navigate to **Devices** → Click on a device
+1. Navigate to **Sites & Devices** → Click on a device
 2. Scroll to the **"Danger Zone"** section
 3. Click **"Forget Device"** and confirm
 

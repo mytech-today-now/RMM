@@ -53,27 +53,101 @@ Write-Host "[INFO] Processing 100 items..." -ForegroundColor Cyan
 
 ---
 
-## Centralized Logging
+## Cross-Platform Installation Paths
 
-All scripts in the myTech.Today repository **MUST**:
-- Log to `%USERPROFILE%\myTech.Today\logs\` directory
-- Create the directory if it doesn't exist
-- Use the **base script file name** as the log file base name
-- Maintain a **current log file** named `<script name>.md`
-- Maintain a **dated archive** named `<script name>-YYYYMMDD-HHMMSS.md`
+All myTech.Today scripts **MUST** use standardized paths resolved at runtime.
 
-**Import shared logging:**
+### Program Files (Read-Only Binaries)
+| Platform | System-Wide | Per-User Fallback |
+|----------|-------------|-------------------|
+| Windows  | `C:\Program Files (x86)\myTech.Today\<Title>\` | `%LOCALAPPDATA%\myTech.Today\<Title>\` |
+| macOS    | `/usr/local/myTech.Today/<Title>/` | `~/Library/Application Support/myTech.Today/<Title>/` |
+| Linux    | `/opt/myTech.Today/<Title>/` | `~/.local/share/myTech.Today/<Title>/` |
+
+### Writable Data Root
+| Platform | System-Wide | Per-User Fallback |
+|----------|-------------|-------------------|
+| Windows  | `C:\ProgramData\myTech.Today\<Title>\` | `%LOCALAPPDATA%\myTech.Today\<Title>\` |
+| macOS    | `/Library/Application Support/myTech.Today/<Title>/` | `~/Library/Preferences/myTech.Today/<Title>/` |
+| Linux    | `/var/opt/myTech.Today/<Title>/` | `~/.config/myTech.Today/<Title>/` |
+
+### Subfolder Structure (under Data Root)
+| Subfolder | Purpose | Example |
+|-----------|---------|---------|
+| `data\` | Database files, persistent state | `devices.db`, `sites.db` |
+| `config\` | Configuration files | `settings.json` |
+| `logs\` | Log files | `RMM.log`, `RMM-20241214-120000.log` |
+
+### Logs (Alternative Platform-Native Paths)
+| Platform | System-Wide | Per-User Fallback |
+|----------|-------------|-------------------|
+| Windows  | `<DataRoot>\logs\` | `<DataRoot>\logs\` |
+| macOS    | `/Library/Logs/myTech.Today/<Title>/` | `~/Library/Logs/myTech.Today/<Title>/` |
+| Linux    | `/var/log/myTech.Today/<Title>/` | `~/.local/share/myTech.Today/<Title>/logs/` |
+
+### Service/Daemon Persistence
+| Platform | Service Type | Location |
+|----------|--------------|----------|
+| Windows  | Windows Service or Scheduled Task | SYSTEM context |
+| macOS    | LaunchDaemon (system) / LaunchAgent (user) | `/Library/LaunchDaemons/` or `~/Library/LaunchAgents/` |
+| Linux    | systemd unit | `/etc/systemd/system/` |
+
+### Path Resolution in PowerShell
 ```powershell
-$loggingUrl = 'https://raw.githubusercontent.com/mytech-today-now/scripts/refs/heads/main/logging.ps1'
-Invoke-Expression (Invoke-WebRequest -Uri $loggingUrl -UseBasicParsing).Content
+# Detect platform and set paths dynamically
+$ScriptTitle = "RMM"
+if ($IsWindows) {
+    $InstallDir = "${env:ProgramFiles(x86)}\myTech.Today\$ScriptTitle"
+    $DataRoot = "$env:ProgramData\myTech.Today\$ScriptTitle"
+    $DataDir = "$DataRoot\data"
+    $ConfigDir = "$DataRoot\config"
+    $LogDir = "$DataRoot\logs"
+} elseif ($IsMacOS) {
+    $InstallDir = "/usr/local/myTech.Today/$ScriptTitle"
+    $DataRoot = "/Library/Application Support/myTech.Today/$ScriptTitle"
+    $DataDir = "$DataRoot/data"
+    $ConfigDir = "$DataRoot/config"
+    $LogDir = "/Library/Logs/myTech.Today/$ScriptTitle"
+} elseif ($IsLinux) {
+    $InstallDir = "/opt/myTech.Today/$ScriptTitle"
+    $DataRoot = "/var/opt/myTech.Today/$ScriptTitle"
+    $DataDir = "$DataRoot/data"
+    $ConfigDir = "$DataRoot/config"
+    $LogDir = "/var/log/myTech.Today/$ScriptTitle"
+}
 ```
 
-**Logging Functions:**
-- `Write-LogInfo` - Informational messages
-- `Write-LogWarning` - Warning messages
-- `Write-LogError` - Error messages
-- `Write-LogSuccess` - Success messages
-- `Write-LogDebug` - Debug messages (when verbose)
+### Elevation Detection
+```powershell
+function Test-IsElevated {
+    if ($IsWindows) {
+        $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+        return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    } else { return (id -u) -eq 0 }
+}
+```
+
+### Service Commands
+- **Windows**: `New-Service -Name "myTechRMM" -BinaryPathName $exe -StartupType Automatic`
+- **macOS**: `launchctl load /Library/LaunchDaemons/com.mytech.today.<title>.plist`
+- **Linux**: `systemctl daemon-reload && systemctl enable --now mytech-<title>`
+
+### Installer Best Practices
+- **Idempotent**: Safe to run multiple times without side effects
+- **Elevation-aware**: Detect admin/root, adjust paths accordingly
+- **Silent mode**: Support `--silent` flag for unattended MSP deployment
+- **Validation**: Verify all files copied and services started correctly
+- **Rollback**: Preserve previous install for recovery if upgrade fails
+
+---
+
+## Centralized Logging
+
+All scripts **MUST** log using cross-platform paths (see table above).
+
+**Logging Functions:** `Write-LogInfo`, `Write-LogWarning`, `Write-LogError`, `Write-LogSuccess`, `Write-LogDebug`
+
+**Log File Naming:** Current: `<script>.log`, Archived: `<script>-YYYYMMDD-HHMMSS.log`
 
 ---
 
@@ -1415,62 +1489,9 @@ if ($CreatePackage) {
 Write-Host "[OK] Build completed successfully" -ForegroundColor Green
 ```
 
-### CI/CD Integration (GitHub Actions)
+### CI/CD Integration
 
-```yaml
-# .github/workflows/build.yml
-name: Build and Test
-
-on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
-
-jobs:
-  test:
-    runs-on: windows-latest
-
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Install Dependencies
-      shell: pwsh
-      run: |
-        Install-Module Pester -Force -SkipPublisherCheck
-        Install-Module PSScriptAnalyzer -Force
-
-    - name: Run PSScriptAnalyzer
-      shell: pwsh
-      run: |
-        $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity Error,Warning
-        if ($results) {
-          $results | Format-Table -AutoSize
-          throw "PSScriptAnalyzer found issues"
-        }
-
-    - name: Run Tests
-      shell: pwsh
-      run: |
-        $config = New-PesterConfiguration
-        $config.Run.Path = ".\Tests"
-        $config.Output.Verbosity = "Detailed"
-        $config.CodeCoverage.Enabled = $true
-        $config.TestResult.Enabled = $true
-
-        $result = Invoke-Pester -Configuration $config
-
-        if ($result.FailedCount -gt 0) {
-          throw "$($result.FailedCount) tests failed"
-        }
-
-    - name: Upload Test Results
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: test-results
-        path: TestResults/
-```
+Use GitHub Actions with `windows-latest` runner. Key steps: checkout, install Pester/PSScriptAnalyzer, run tests.
 
 ---
 
@@ -1603,129 +1624,27 @@ $safePath = Test-SafePath -Path $userInput -AllowedRoots @("C:\Data", "D:\Shared
 
 ## PowerShell Classes
 
-### Class Definition Patterns
+### Class Definition Pattern
 
 ```powershell
 class Person {
-    # Properties
     [string]$FirstName
     [string]$LastName
-    [datetime]$DateOfBirth
-    hidden [string]$_internalId
+    hidden [string]$_id
 
-    # Static property
-    static [int]$InstanceCount = 0
-
-    # Constructor
-    Person([string]$firstName, [string]$lastName) {
-        $this.FirstName = $firstName
-        $this.LastName = $lastName
-        $this._internalId = [guid]::NewGuid().ToString()
-        [Person]::InstanceCount++
+    Person([string]$first, [string]$last) {
+        $this.FirstName = $first; $this.LastName = $last
+        $this._id = [guid]::NewGuid().ToString()
     }
 
-    # Default constructor
-    Person() {
-        $this._internalId = [guid]::NewGuid().ToString()
-        [Person]::InstanceCount++
-    }
-
-    # Computed property (method)
-    [string] FullName() {
-        return "$($this.FirstName) $($this.LastName)"
-    }
-
-    # Method with parameters
-    [int] GetAge() {
-        return [math]::Floor(((Get-Date) - $this.DateOfBirth).TotalDays / 365.25)
-    }
-
-    # Static method
-    static [Person] CreateFromHashtable([hashtable]$data) {
-        $person = [Person]::new($data.FirstName, $data.LastName)
-        if ($data.DateOfBirth) {
-            $person.DateOfBirth = $data.DateOfBirth
-        }
-        return $person
-    }
-
-    # Override ToString
-    [string] ToString() {
-        return $this.FullName()
-    }
+    [string] FullName() { return "$($this.FirstName) $($this.LastName)" }
 }
 
 # Inheritance
 class Employee : Person {
     [string]$Department
-    [decimal]$Salary
-
-    Employee([string]$firstName, [string]$lastName, [string]$department)
-        : base($firstName, $lastName) {
-        $this.Department = $department
-    }
-
-    [string] GetInfo() {
-        return "$($this.FullName()) - $($this.Department)"
-    }
-}
-
-# Usage
-$employee = [Employee]::new("John", "Doe", "IT")
-$employee.Salary = 75000
-$employee.DateOfBirth = [datetime]"1990-05-15"
-
-Write-Host "Employee: $($employee.GetInfo())"
-Write-Host "Age: $($employee.GetAge())"
-Write-Host "Total instances: $([Person]::InstanceCount)"
-```
-
-### Interface-like Pattern (Abstract Class)
-
-```powershell
-class LoggerBase {
-    [string]$Name
-    [datetime]$Created
-
-    LoggerBase([string]$name) {
-        $this.Name = $name
-        $this.Created = Get-Date
-
-        # Enforce abstract - prevent direct instantiation
-        if ($this.GetType() -eq [LoggerBase]) {
-            throw "LoggerBase is abstract and cannot be instantiated directly"
-        }
-    }
-
-    # Abstract method - must be overridden
-    [void] Log([string]$message) {
-        throw "Log method must be overridden in derived class"
-    }
-
-    # Concrete method
-    [string] FormatMessage([string]$message) {
-        return "[$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')] [$($this.Name)] $message"
-    }
-}
-
-class FileLogger : LoggerBase {
-    [string]$FilePath
-
-    FileLogger([string]$name, [string]$filePath) : base($name) {
-        $this.FilePath = $filePath
-    }
-
-    [void] Log([string]$message) {
-        $formatted = $this.FormatMessage($message)
-        Add-Content -Path $this.FilePath -Value $formatted
-    }
-}
-
-class ConsoleLogger : LoggerBase {
-    ConsoleLogger([string]$name) : base($name) { }
-
-    [void] Log([string]$message) {
-        Write-Host $this.FormatMessage($message)
+    Employee([string]$first, [string]$last, [string]$dept) : base($first, $last) {
+        $this.Department = $dept
     }
 }
 ```

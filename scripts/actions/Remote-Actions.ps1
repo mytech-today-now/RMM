@@ -124,7 +124,20 @@ if ($destructiveActions -contains $Action -and -not $PSBoundParameters.ContainsK
 
 # Action execution functions
 function Invoke-RemoteAction {
-    param($Device, $Action, $Parameters)
+    <#
+    .SYNOPSIS
+        Execute a remote action on a device with automatic connection handling.
+    .DESCRIPTION
+        Executes remote actions with support for both domain-joined and workgroup environments.
+        Automatically handles HTTPS preference and TrustedHosts management.
+    #>
+    param(
+        $Device,
+        $Action,
+        $Parameters,
+        [PSCredential]$Credential,
+        [switch]$RequireHTTPS
+    )
 
     $result = @{
         DeviceId = $Device.DeviceId
@@ -146,45 +159,78 @@ function Invoke-RemoteAction {
         return $result
     }
 
+    # Analyze remote environment for connection strategy
+    $envCheck = Test-RMMRemoteEnvironment -ComputerName $Device.Hostname
+
+    # Build common invoke parameters for secure remoting
+    $invokeParams = @{
+        ComputerName = $Device.Hostname
+    }
+
+    if ($Credential) {
+        $invokeParams.Credential = $Credential
+    }
+
+    # Handle transport selection based on environment
+    if ($RequireHTTPS -and -not $envCheck.HTTPSAvailable) {
+        $result.Message = "HTTPS required but not available on target"
+        return $result
+    }
+
+    # Prefer HTTPS for workgroup targets, handle TrustedHosts for HTTP
+    if (-not $envCheck.LocalIsDomainJoined -and $envCheck.HTTPSAvailable) {
+        $invokeParams.UseSSL = $true
+        $invokeParams.Port = 5986
+        $invokeParams.SessionOption = New-PSSessionOption -SkipCACheck -SkipCNCheck
+    }
+    elseif (-not $envCheck.LocalIsDomainJoined -and $envCheck.RequiresTrustedHost) {
+        # Add to TrustedHosts temporarily for workgroup HTTP connection
+        Add-RMMTrustedHost -ComputerName $Device.Hostname -Temporary $true | Out-Null
+    }
+
     try {
         switch ($Action) {
             'Reboot' {
-                Restart-Computer -ComputerName $Device.Hostname -Force -ErrorAction Stop
+                $restartParams = @{ ComputerName = $Device.Hostname; Force = $true; ErrorAction = 'Stop' }
+                if ($Credential) { $restartParams.Credential = $Credential }
+                Restart-Computer @restartParams
                 $result.Success = $true
                 $result.Message = "Reboot initiated"
             }
             'Shutdown' {
-                Stop-Computer -ComputerName $Device.Hostname -Force -ErrorAction Stop
+                $stopParams = @{ ComputerName = $Device.Hostname; Force = $true; ErrorAction = 'Stop' }
+                if ($Credential) { $stopParams.Credential = $Credential }
+                Stop-Computer @stopParams
                 $result.Success = $true
                 $result.Message = "Shutdown initiated"
             }
             'Lock' {
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     rundll32.exe user32.dll,LockWorkStation
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "Workstation locked"
             }
             'Logoff' {
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     logoff
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "User logged off"
             }
             'EnableRDP' {
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
                     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "RDP enabled"
             }
             'DisableRDP' {
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 1
                     Disable-NetFirewallRule -DisplayGroup "Remote Desktop"
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "RDP disabled"
             }
@@ -194,9 +240,16 @@ function Invoke-RemoteAction {
                 $result.Message = "RDP session launched"
             }
             'StartRemotePS' {
-                Enter-PSSession -ComputerName $Device.Hostname
-                $result.Success = $true
-                $result.Message = "PowerShell session started"
+                # Create session with secure remoting
+                $session = New-RMMRemoteSession -ComputerName $Device.Hostname -Credential $Credential
+                if ($session) {
+                    Enter-PSSession -Session $session
+                    $result.Success = $true
+                    $result.Message = "PowerShell session started"
+                }
+                else {
+                    $result.Message = "Failed to create remote session"
+                }
             }
             'ServiceControl' {
                 $serviceName = $Parameters.ServiceName
@@ -204,14 +257,14 @@ function Invoke-RemoteAction {
                 if (-not $serviceName -or -not $serviceAction) {
                     throw "ServiceName and Action parameters required"
                 }
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     param($Name, $Action)
                     switch ($Action) {
                         'Start' { Start-Service -Name $Name }
                         'Stop' { Stop-Service -Name $Name -Force }
                         'Restart' { Restart-Service -Name $Name -Force }
                     }
-                } -ArgumentList $serviceName, $serviceAction -ErrorAction Stop
+                } -ArgumentList $serviceName, $serviceAction
                 $result.Success = $true
                 $result.Message = "Service $serviceName $serviceAction completed"
             }
@@ -220,15 +273,15 @@ function Invoke-RemoteAction {
                 if (-not $processName) {
                     throw "ProcessName parameter required"
                 }
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     param($Name)
                     Stop-Process -Name $Name -Force
-                } -ArgumentList $processName -ErrorAction Stop
+                } -ArgumentList $processName
                 $result.Success = $true
                 $result.Message = "Process $processName terminated"
             }
             'ClearTemp' {
-                $output = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                $output = Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     $paths = @("$env:TEMP\*", "C:\Windows\Temp\*")
                     $freedSpace = 0
                     foreach ($path in $paths) {
@@ -237,22 +290,22 @@ function Invoke-RemoteAction {
                         Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
                     }
                     return [math]::Round($freedSpace / 1MB, 2)
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "Cleared temp files"
                 $result.Output = "Freed ${output}MB"
             }
             'FlushDNS' {
-                Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     Clear-DnsClientCache
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "DNS cache flushed"
             }
             'GPUpdate' {
-                $output = Invoke-Command -ComputerName $Device.Hostname -ScriptBlock {
+                $output = Invoke-RMMRemoteCommand -ComputerName $Device.Hostname -Credential $Credential -ScriptBlock {
                     gpupdate /force
-                } -ErrorAction Stop
+                }
                 $result.Success = $true
                 $result.Message = "Group Policy updated"
                 $result.Output = $output

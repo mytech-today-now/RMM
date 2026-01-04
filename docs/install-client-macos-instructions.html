@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>myTech.Today RMM - macOS Client Setup Instructions</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; line-height: 1.6; color: #333; background: #f5f5f7; }
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px 20px; text-align: center; }
+        header h1 { font-size: 28px; margin-bottom: 10px; }
+        header p { opacity: 0.9; font-size: 16px; }
+        .content { background: white; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin: 20px 0; padding: 30px; }
+        h2 { color: #667eea; margin: 30px 0 15px; padding-bottom: 10px; border-bottom: 2px solid #eee; }
+        h2:first-child { margin-top: 0; }
+        h3 { color: #444; margin: 20px 0 10px; }
+        .step { background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px 20px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+        .step-number { display: inline-block; background: #667eea; color: white; width: 28px; height: 28px; border-radius: 50%; text-align: center; line-height: 28px; font-weight: bold; margin-right: 10px; }
+        .warning { background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px 20px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+        .warning::before { content: "⚠️ "; }
+        .info { background: #d1ecf1; border-left: 4px solid #17a2b8; padding: 15px 20px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+        .info::before { content: "ℹ️ "; }
+        .success { background: #d4edda; border-left: 4px solid #28a745; padding: 15px 20px; margin: 15px 0; border-radius: 0 8px 8px 0; }
+        .success::before { content: "✅ "; }
+        .screenshot { background: #e9ecef; border: 2px dashed #adb5bd; border-radius: 8px; padding: 40px; text-align: center; margin: 15px 0; color: #6c757d; }
+        .screenshot img { max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        code { background: #e9ecef; padding: 2px 8px; border-radius: 4px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 14px; }
+        .code-block { background: #1e1e1e; color: #d4d4d4; padding: 15px 20px; border-radius: 8px; margin: 15px 0; overflow-x: auto; font-family: 'SF Mono', Monaco, monospace; font-size: 13px; }
+        ul, ol { margin: 10px 0 10px 25px; }
+        li { margin: 8px 0; }
+        .nav-path { background: #f0f0f0; padding: 8px 15px; border-radius: 20px; display: inline-block; margin: 5px 0; font-size: 14px; }
+        .nav-path span { color: #667eea; }
+        footer { text-align: center; padding: 30px; color: #666; font-size: 14px; }
+        a { color: #667eea; }
+        .toc { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .toc h3 { margin-top: 0; }
+        .toc ul { list-style: none; margin: 0; padding: 0; }
+        .toc li { margin: 8px 0; }
+        .toc a { text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🍎 myTech.Today RMM</h1>
+        <p>macOS Client Installation &amp; Permission Setup Guide</p>
+    </header>
+
+    <div class="container">
+        <div class="content">
+            <div class="toc">
+                <h3>📋 Table of Contents</h3>
+                <ul>
+                    <li><a href="#overview">1. Overview</a></li>
+                    <li><a href="#gatekeeper">2. Allowing the App (Gatekeeper)</a></li>
+                    <li><a href="#full-disk-access">3. Granting Full Disk Access</a></li>
+                    <li><a href="#accessibility">4. Accessibility Permissions</a></li>
+                    <li><a href="#terminal">5. Terminal & PowerShell Setup</a></li>
+                    <li><a href="#firewall">6. Firewall Configuration</a></li>
+                    <li><a href="#troubleshooting">7. Troubleshooting</a></li>
+                </ul>
+            </div>
+
+            <h2 id="overview">1. Overview</h2>
+            <p>macOS includes robust security features that protect your system from unauthorized access. For the myTech.Today RMM client to function correctly, you'll need to grant specific permissions.</p>
+            
+            <div class="info">
+                These permissions are required because the RMM client needs to: monitor system health, execute management scripts, communicate with the RMM server, and report device status.
+            </div>
+
+            <h2 id="gatekeeper">2. Allowing the App Through Gatekeeper</h2>
+            <p>macOS Gatekeeper may block the RMM client because it wasn't downloaded from the App Store.</p>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>If you see "App can't be opened":</strong><br>
+                When you first try to run the RMM client, macOS may display a warning dialog.
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Gatekeeper blocking dialog]</em></p>
+                <p>Shows: "myTech.Today RMM" cannot be opened because Apple cannot check it for malicious software.</p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Open System Settings:</strong><br>
+                Click the <strong>Apple menu </strong> → <strong>System Settings</strong> (or System Preferences on older macOS)
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Navigate to Privacy & Security:</strong><br>
+                <div class="nav-path"> System Settings → <span>Privacy & Security</span></div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Scroll to Security section:</strong><br>
+                Find the message: <em>"myTech.Today RMM" was blocked from use because it is not from an identified developer.</em><br><br>
+                Click <strong>"Open Anyway"</strong>
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Security settings showing "Open Anyway" button]</em></p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">5</span>
+                <strong>Confirm by entering your password:</strong><br>
+                Enter your Mac administrator password when prompted, then click <strong>OK</strong>.
+            </div>
+
+            <div class="success">
+                The RMM client should now be allowed to run. You may need to launch it again.
+            </div>
+
+            <h2 id="full-disk-access">3. Granting Full Disk Access</h2>
+            <p>Full Disk Access allows the RMM client to read system information, execute scripts, and monitor device health across all areas of your Mac.</p>
+
+            <div class="warning">
+                Without Full Disk Access, the RMM client will have limited functionality and may not be able to report accurate system information.
+            </div>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Open System Settings:</strong><br>
+                Click the <strong>Apple menu </strong> → <strong>System Settings</strong>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Navigate to Full Disk Access:</strong><br>
+                <div class="nav-path"> System Settings → <span>Privacy & Security</span> → <span>Full Disk Access</span></div>
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Full Disk Access settings panel]</em></p>
+                <p>Shows the list of apps with Full Disk Access permissions</p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Click the lock icon to make changes:</strong><br>
+                Click the <strong>🔒 lock icon</strong> at the bottom and enter your administrator password.
+            </div>
+
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Add the RMM client:</strong><br>
+                Click the <strong>+</strong> button and navigate to:<br>
+                <code>/Applications/myTech.Today/RMM-Client</code><br><br>
+                Or if using PowerShell directly, add:<br>
+                <code>/usr/local/bin/pwsh</code>
+            </div>
+
+            <div class="step">
+                <span class="step-number">5</span>
+                <strong>Also add Terminal (if using Terminal to run scripts):</strong><br>
+                Find and enable <strong>Terminal</strong> in the list, or add it using the + button:<br>
+                <code>/Applications/Utilities/Terminal.app</code>
+            </div>
+
+            <div class="step">
+                <span class="step-number">6</span>
+                <strong>Ensure the toggle is ON:</strong><br>
+                Make sure the checkbox/toggle next to each app is <strong>enabled</strong> (blue/checked).
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Full Disk Access with Terminal and pwsh enabled]</em></p>
+            </div>
+
+            <div class="info">
+                You may need to quit and reopen Terminal or the RMM client for changes to take effect.
+            </div>
+
+            <h2 id="accessibility">4. Accessibility Permissions</h2>
+            <p>If the RMM client needs to perform automation tasks or remote assistance, Accessibility permissions may be required.</p>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Open Accessibility settings:</strong><br>
+                <div class="nav-path"> System Settings → <span>Privacy & Security</span> → <span>Accessibility</span></div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Add the RMM client:</strong><br>
+                Click the lock to unlock, then click <strong>+</strong> and add the RMM client application.
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Enable the toggle:</strong><br>
+                Ensure the checkbox next to the RMM client is <strong>enabled</strong>.
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Accessibility settings with app added]</em></p>
+            </div>
+
+            <h2 id="terminal">5. Terminal & PowerShell Setup</h2>
+            <p>The RMM client uses PowerShell to execute management scripts. You'll need to install PowerShell for macOS.</p>
+
+            <h3>Installing PowerShell on macOS</h3>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Option A - Using Homebrew (Recommended):</strong><br>
+                Open Terminal and run:
+                <div class="code-block">brew install --cask powershell</div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Option B - Direct Download:</strong><br>
+                Download the latest PowerShell package from:<br>
+                <a href="https://github.com/PowerShell/PowerShell/releases" target="_blank">https://github.com/PowerShell/PowerShell/releases</a><br><br>
+                Look for the <code>.pkg</code> file for macOS (e.g., <code>powershell-7.x.x-osx-x64.pkg</code>)
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Verify Installation:</strong><br>
+                Open Terminal and run:
+                <div class="code-block">pwsh --version</div>
+                You should see the PowerShell version number.
+            </div>
+
+            <h3>Granting Terminal Full Disk Access</h3>
+            <div class="info">
+                If you run RMM scripts from Terminal, ensure Terminal.app has Full Disk Access (see Section 3).
+            </div>
+
+            <h3>Running the RMM Client</h3>
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Open Terminal and navigate to the RMM client folder:</strong>
+                <div class="code-block">cd ~/myTech.Today/RMM-Client</div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Run the registration script:</strong>
+                <div class="code-block">pwsh ./Register-Device.ps1 -Interactive</div>
+            </div>
+
+            <h2 id="firewall">6. Firewall Configuration</h2>
+            <p>The RMM client needs to communicate with your organization's RMM server. You may need to allow incoming connections.</p>
+
+            <div class="step">
+                <span class="step-number">1</span>
+                <strong>Open Firewall settings:</strong><br>
+                <div class="nav-path"> System Settings → <span>Network</span> → <span>Firewall</span></div>
+            </div>
+
+            <div class="step">
+                <span class="step-number">2</span>
+                <strong>Click "Options..." or "Firewall Options":</strong><br>
+                This opens the detailed firewall configuration.
+            </div>
+
+            <div class="screenshot">
+                <p><em>[Screenshot: Firewall Options panel]</em></p>
+            </div>
+
+            <div class="step">
+                <span class="step-number">3</span>
+                <strong>Add the RMM client:</strong><br>
+                Click <strong>+</strong> and add:<br>
+                <ul>
+                    <li><code>/usr/local/bin/pwsh</code> (PowerShell)</li>
+                    <li>The RMM client application if installed as an app</li>
+                </ul>
+            </div>
+
+            <div class="step">
+                <span class="step-number">4</span>
+                <strong>Set to "Allow incoming connections":</strong><br>
+                For each added application, ensure it's set to <strong>Allow incoming connections</strong>.
+            </div>
+
+            <div class="info">
+                If your firewall is set to "Block all incoming connections", you'll need to add an exception or temporarily disable this strict mode during initial setup.
+            </div>
+
+            <h2 id="troubleshooting">7. Troubleshooting</h2>
+
+            <h3>❌ "Operation not permitted" errors</h3>
+            <div class="step">
+                <strong>Cause:</strong> Terminal or PowerShell doesn't have Full Disk Access.<br>
+                <strong>Fix:</strong> Add Terminal.app and /usr/local/bin/pwsh to Full Disk Access (Section 3).
+            </div>
+
+            <h3>❌ Scripts won't execute</h3>
+            <div class="step">
+                <strong>Cause:</strong> PowerShell execution policy or file permissions.<br>
+                <strong>Fix:</strong> Run this command to allow local scripts:
+                <div class="code-block">pwsh -Command "Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser"</div>
+            </div>
+
+            <h3>❌ Connection to RMM server fails</h3>
+            <div class="step">
+                <strong>Cause:</strong> Firewall blocking outbound connections or incorrect server URL.<br>
+                <strong>Fix:</strong>
+                <ul>
+                    <li>Verify the server URL is correct</li>
+                    <li>Check that your network allows connections to the RMM server port (typically 8080)</li>
+                    <li>Try temporarily disabling the firewall to test</li>
+                </ul>
+            </div>
+
+            <h3>❌ "Unidentified developer" warning keeps appearing</h3>
+            <div class="step">
+                <strong>Cause:</strong> Gatekeeper settings reset or app was re-downloaded.<br>
+                <strong>Fix:</strong> Right-click the app → <strong>Open</strong> → Click <strong>Open</strong> in the dialog. This adds a permanent exception.
+            </div>
+
+            <h3>❌ Permission changes not taking effect</h3>
+            <div class="step">
+                <strong>Fix:</strong> After changing permissions:
+                <ul>
+                    <li>Quit the application completely (Cmd+Q)</li>
+                    <li>If using Terminal, close all Terminal windows and reopen</li>
+                    <li>In some cases, logging out and back in may be required</li>
+                </ul>
+            </div>
+
+            <div class="success">
+                <strong>Need more help?</strong> Contact your IT administrator or visit the myTech.Today support portal.
+            </div>
+
+        </div>
+
+        <footer>
+            <p>myTech.Today RMM &copy; 2025 | <a href="#">Support Portal</a> | <a href="#">Documentation</a></p>
+            <p style="margin-top:10px;font-size:12px;color:#999;">This guide applies to macOS Ventura (13.x), Sonoma (14.x), and Sequoia (15.x). Steps may vary slightly on older versions.</p>
+        </footer>
+    </div>
+</body>
+</html>
+

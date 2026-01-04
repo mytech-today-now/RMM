@@ -132,7 +132,22 @@ Write-Host ""
 
 # Script execution function
 function Invoke-RemoteScript {
-    param($Device, $ScriptBlock, $Parameters, $Timeout, $CaptureOutput)
+    <#
+    .SYNOPSIS
+        Execute a script on a remote device with automatic connection handling.
+    .DESCRIPTION
+        Executes scripts remotely with support for both domain-joined and workgroup environments.
+        Automatically handles HTTPS preference and TrustedHosts management.
+    #>
+    param(
+        $Device,
+        $ScriptBlock,
+        $Parameters,
+        $Timeout,
+        $CaptureOutput,
+        [PSCredential]$Credential,
+        [switch]$RequireHTTPS
+    )
 
     $result = @{
         DeviceId  = $Device.DeviceId
@@ -154,18 +169,26 @@ function Invoke-RemoteScript {
             return $result
         }
 
-        # Execute script remotely
+        # Use secure remoting with automatic transport selection
         $invokeParams = @{
             ComputerName = $Device.Hostname
             ScriptBlock  = $ScriptBlock
-            ErrorAction  = 'Stop'
+        }
+
+        if ($Credential) {
+            $invokeParams.Credential = $Credential
+        }
+
+        if ($RequireHTTPS) {
+            $invokeParams.RequireHTTPS = $true
         }
 
         if ($Parameters.Count -gt 0) {
             $invokeParams.ArgumentList = $Parameters.Values
         }
 
-        $output = Invoke-Command @invokeParams
+        # Use Invoke-RMMRemoteCommand for secure connection handling
+        $output = Invoke-RMMRemoteCommand @invokeParams
 
         $result.Success = $true
         if ($CaptureOutput) {
